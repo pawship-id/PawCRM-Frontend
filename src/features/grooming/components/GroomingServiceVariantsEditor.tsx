@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { X } from "lucide-react";
 
 import { Alert, Card, Spinner } from "@/components";
 import { Badge } from "@/components/ui/badge";
@@ -21,10 +20,12 @@ import {
 import {
   axisDefsForKind,
   buildVariantCombos,
+  scopeHotelAxisValues,
   MAX_VARIANTS,
   useVariantAxisValues,
 } from "@/features/services";
 import { swalToast } from "@/lib/swal";
+import { useHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
@@ -57,44 +58,6 @@ const PLACES: { value: ServicePlace; label: string; hint: string }[] = [
   { value: "home", label: "Di alamat pelanggan saja", hint: "Selalu ke rumah" },
   { value: "both", label: "Keduanya", hint: "Ditandai per booking, harga sama" },
 ];
-
-type BulkField = Exclude<BulkAction["kind"], "toggle">;
-
-const BULK_PROMPTS: Record<BulkField, { label: string; placeholder: string }> = {
-  price: { label: "Harga baru", placeholder: "139.000" },
-  duration: { label: "Durasi baru (menit)", placeholder: "60" },
-  percent: { label: "Naik berapa persen (boleh minus)", placeholder: "10" },
-  rupiah: { label: "Tambah berapa rupiah (boleh minus)", placeholder: "50.000" },
-};
-
-/** The bulk bar's typed value → the change it means, or null when it means nothing. */
-function bulkActionOf(field: BulkField, text: string): BulkAction | null {
-  const trimmed = text.trim();
-
-  switch (field) {
-    case "price": {
-      const digits = priceDigits(trimmed);
-      return digits === null ? null : { kind: "price", digits };
-    }
-    case "duration": {
-      const minutes = durationValue(trimmed);
-      return minutes === null ? null : { kind: "duration", minutes };
-    }
-    case "percent": {
-      const percent = Number(trimmed.replace(",", "."));
-      return trimmed !== "" && Number.isFinite(percent)
-        ? { kind: "percent", percent }
-        : null;
-    }
-    case "rupiah": {
-      const negative = trimmed.startsWith("-");
-      const digits = priceDigits(negative ? trimmed.slice(1) : trimmed);
-      return digits === null
-        ? null
-        : { kind: "rupiah", delta: Number(digits) * (negative ? -1 : 1) };
-    }
-  }
-}
 
 /**
  * Layanan › Grooming › a service › Varian & Harga — EDITED IN PLACE, as
@@ -141,9 +104,8 @@ export function GroomingServiceVariantsEditor({
 }) {
   const [draft, setDraft] = useState<VariantDraft>(() => seedDraft(service));
   const [selected, setSelected] = useState<string[]>([]);
-  const [bulkField, setBulkField] = useState<BulkField | null>(null);
-  const [bulkText, setBulkText] = useState("");
-  const [bulkError, setBulkError] = useState<string | null>(null);
+  const [bulkPrice, setBulkPrice] = useState("");
+  const [bulkMinutes, setBulkMinutes] = useState("");
   const [tiering, setTiering] = useState(false);
   const [tierBase, setTierBase] = useState("");
   const [tierStep, setTierStep] = useState("");
@@ -166,10 +128,20 @@ export function GroomingServiceVariantsEditor({
     service.serviceKind ?? serviceKind,
     draft.axes,
   );
-  const axisValues = useMemo(
-    () => valuesFor(service.variants),
-    [valuesFor, service.variants],
-  );
+  const hotelRoomTypes = useHotelRoomTypes();
+  const roomTypeAxis = allAxisDefs.find((def) => def.systemKey === "roomType")?.key ?? null;
+  const axisValues = useMemo(() => {
+    const table = valuesFor(service.variants);
+    /* A hotel service offers rows only for its own animals and room types (24 November 2026). */
+    return (service.serviceKind ?? serviceKind) === "hotel"
+      ? scopeHotelAxisValues(table, {
+          petTypeIds: service.petTypeIds ?? [],
+          roomTypeIds: service.roomTypeIds ?? [],
+          roomTypeAxis,
+          roomTypes: hotelRoomTypes.items,
+        })
+      : table;
+  }, [valuesFor, service, serviceKind, roomTypeAxis, hotelRoomTypes.items]);
 
   /*
     NOT EDITABLE WITHOUT THE LIST. Which rows an axis makes is the tenant's
@@ -190,7 +162,8 @@ export function GroomingServiceVariantsEditor({
   const tripAxis = allAxisDefs.find((def) => def.systemKey === "trip")?.key ?? null;
   const isRide = (service.serviceKind ?? serviceKind) === "pickup-delivery" && tripAxis !== null;
   const rideVaried = isRide && draft.axes.length > 0;
-  const chipDefs = axisDefs.filter((def) => !def.systemKey);
+  /* The trip card is never a chip; the room-type card is (24 November 2026). */
+  const chipDefs = axisDefs.filter((def) => def.systemKey !== "trip");
 
   useEffect(() => {
     if (optionsLoading || !isRide || !tripAxis) return;
@@ -213,7 +186,9 @@ export function GroomingServiceVariantsEditor({
   const dirty =
     draftSignature(draft, axisValues) !==
     draftSignature(seedDraft(service), axisValues);
-  const problem = draftProblem(draft, axisValues);
+  /* A HOTEL service bills by the night and has no length (21 November 2026). */
+  const untimed = (service.serviceKind ?? serviceKind) === "hotel";
+  const problem = draftProblem(draft, axisValues, { untimed });
   const tooMany = combos.length > MAX_VARIANTS;
   const smallestSize = axisValues.sizeCategory?.[0]?.label ?? "ukuran terkecil";
   const activeCount = combos.filter((combo) => rowOf(draft, combo.key).active).length;
@@ -226,9 +201,8 @@ export function GroomingServiceVariantsEditor({
     .map(Number);
 
   function closeBulk() {
-    setBulkField(null);
-    setBulkText("");
-    setBulkError(null);
+    setBulkPrice("");
+    setBulkMinutes("");
   }
 
   function change(next: VariantDraft) {
@@ -254,24 +228,6 @@ export function GroomingServiceVariantsEditor({
     change(applyBulk(draft, selected, action));
     setSelected([]);
     closeBulk();
-  }
-
-  function applyBulkText() {
-    if (!bulkField) return;
-    const action = bulkActionOf(bulkField, bulkText);
-
-    if (!action) {
-      setBulkError(
-        bulkField === "duration"
-          ? `Isi menit antara 1 dan ${MAX_DURATION_MIN}.`
-          : bulkField === "percent"
-            ? "Isi angka persen, mis. 10 atau -5."
-            : "Isi angka rupiah, mis. 150.000.",
-      );
-      return;
-    }
-
-    runBulk(action);
   }
 
   function applyTier() {
@@ -308,7 +264,7 @@ export function GroomingServiceVariantsEditor({
     try {
       const updated = await serviceService.update(
         service._id,
-        draftPatch(draft, axisValues),
+        draftPatch(draft, axisValues, { untimed }),
       );
       swalToast("Varian & harga tersimpan.");
       onSaved(updated);
@@ -337,67 +293,10 @@ export function GroomingServiceVariantsEditor({
     );
   }
 
-  return (
-    <div className="flex flex-col gap-6">
-      {mayUpdate && dirty && (
-        <DraftSaveBar
-          problem={
-            problem && (
-              <>
-                Belum bisa disimpan: <b className="font-semibold">{problem}</b>.
-              </>
-            )
-          }
-          saving={saving}
-          saveLabel="Simpan varian & harga"
-          onDiscard={discard}
-          onSave={() => void save()}
-        />
-      )}
-
-      {saveError && <Alert variant="error">{saveError}</Alert>}
-      {optionsError && (
-        <Alert variant="error">
-          Daftar jenis hewan, ukuran, dan bulu tidak bisa dimuat, jadi varian
-          belum bisa diubah. Muat ulang halamannya.
-        </Alert>
-      )}
-
-      <Card title="Tempat pengerjaan">
-        <div
-          role="radiogroup"
-          aria-label="Tempat pengerjaan"
-          className="grid gap-3 md:grid-cols-3"
-        >
-          {PLACES.map((place) => {
-            const checked = draft.place === place.value;
-
-            return (
-              <button
-                key={place.value}
-                type="button"
-                role="radio"
-                aria-checked={checked}
-                disabled={disabled}
-                onClick={() => change({ ...draft, place: place.value })}
-                className={cn(
-                  "rounded-xl border p-4 text-left transition focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
-                  checked
-                    ? "border-primary bg-surface-selected"
-                    : "border-border bg-surface enabled:hover:bg-surface-hover",
-                )}
-              >
-                <span className="block text-sm font-semibold text-foreground">
-                  {place.label}
-                </span>
-                <span className="mt-0.5 block text-xs text-muted">{place.hint}</span>
-              </button>
-            );
-          })}
-        </div>
-      </Card>
-
-      <Card title="Opsi yang membedakan harga">
+  /* The option chips and the price grid — two cards, or ONE on a hotel
+     service with nothing between them (24 November 2026, on request). */
+  const optionsBody = (
+    <>
         {isRide && (
           <div className="mb-4 flex items-start justify-between gap-4">
             <div className="min-w-0">
@@ -459,17 +358,17 @@ export function GroomingServiceVariantsEditor({
         )}
         {draft.axes.length === 0 && !isRide && (
           <p className="mt-3 text-sm text-muted">
-            Tidak ada yang dicentang — satu harga dan satu durasi untuk semua
-            hewan.
+            {untimed
+              ? "Tidak dicentang — satu harga untuk semua."
+              : "Tidak ada yang dicentang — satu harga dan satu durasi untuk semua hewan."}
           </p>
         )}
-      </Card>
-
-      {draft.axes.length === 0 ? (
-        <Card title="Harga & durasi">
+    </>
+  );
+  const flatBody = (
           <div className="grid max-w-lg gap-4 sm:grid-cols-2">
             <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
-              Harga
+              {untimed ? "Harga per malam" : "Harga"}
               <Input
                 inputMode="numeric"
                 value={draft.flat.price}
@@ -497,6 +396,7 @@ export function GroomingServiceVariantsEditor({
                 className="h-11 tabular-nums"
               />
             </label>
+            {!untimed && (
             <label className="flex flex-col gap-1.5 text-sm font-medium text-foreground">
               Durasi (menit)
               <Input
@@ -515,22 +415,10 @@ export function GroomingServiceVariantsEditor({
                 className="h-11 tabular-nums"
               />
             </label>
+            )}
           </div>
-        </Card>
-      ) : (
-        <Card
-          title="Daftar varian"
-          action={
-            <div className="flex gap-2">
-              <Badge variant="outline" className="border-transparent bg-tint-neutral text-muted tabular-nums">
-                {combos.length} varian
-              </Badge>
-              <Badge variant="outline" className="border-transparent bg-tint-neutral text-muted tabular-nums">
-                {activeCount} aktif
-              </Badge>
-            </div>
-          }
-        >
+  );
+  const variantsBody = (
           <div className="flex flex-col gap-3">
             {tooMany && (
               <Alert variant="error">
@@ -540,79 +428,75 @@ export function GroomingServiceVariantsEditor({
               </Alert>
             )}
 
-            {mayUpdate && selected.length > 0 && (
-              <div className="flex flex-wrap items-center gap-2 rounded-xl bg-primary px-4 py-3 text-primary-foreground">
-                <b className="text-sm tabular-nums">{selected.length} dipilih</b>
-
-                {bulkField === null ? (
-                  <>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => setBulkField("price")}>
-                      Set harga
-                    </Button>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => setBulkField("duration")}>
-                      Set durasi
-                    </Button>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => setBulkField("percent")}>
-                      + %
-                    </Button>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => setBulkField("rupiah")}>
-                      + Rp
-                    </Button>
-                    <Button type="button" size="sm" variant="secondary" onClick={() => runBulk({ kind: "toggle" })}>
-                      Aktif / nonaktif
-                    </Button>
-                  </>
-                ) : (
-                  <>
-                    <Input
-                      aria-label={BULK_PROMPTS[bulkField].label}
-                      value={bulkText}
-                      onChange={(event) => {
-                        setBulkText(event.target.value);
-                        setBulkError(null);
-                      }}
-                      onKeyDown={(event) => {
-                        if (event.key === "Enter") {
-                          event.preventDefault();
-                          applyBulkText();
-                        }
-                      }}
-                      placeholder={BULK_PROMPTS[bulkField].placeholder}
-                      className="h-9 w-40 bg-surface text-foreground tabular-nums"
-                    />
-                    <span className="text-sm">{BULK_PROMPTS[bulkField].label}</span>
-                    <Button type="button" size="sm" variant="secondary" onClick={applyBulkText}>
-                      Terapkan
-                    </Button>
-                    <Button
-                      type="button"
-                      size="sm"
-                      variant="ghost"
-                      className="text-primary-foreground hover:bg-primary-hover hover:text-primary-foreground"
-                      onClick={closeBulk}
-                    >
-                      Batal
-                    </Button>
-                    {bulkError && (
-                      <span role="alert" className="w-full text-sm">
-                        {bulkError}
-                      </span>
-                    )}
-                  </>
-                )}
-
+            {/* The same bulk bar as the create form (24 November 2026, on
+                request): always shown, off until something is ticked. */}
+            {mayUpdate && (
+              <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5">
+                <span className="mr-1 text-sm text-muted tabular-nums">
+                  {selected.length === 0 ? "Centang varian untuk mengubah sekaligus" : `${selected.length} varian dipilih`}
+                </span>
+                <div className="relative w-36">
+                  <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted">Rp</span>
+                  <Input
+                    aria-label="Ubah harga varian yang dicentang"
+                    inputMode="numeric"
+                    placeholder="Harga"
+                    value={bulkPrice}
+                    onChange={(event) => setBulkPrice(event.target.value)}
+                    disabled={disabled || selected.length === 0}
+                    className="h-8 pl-8 text-right text-sm tabular-nums"
+                  />
+                </div>
                 <Button
                   type="button"
                   size="sm"
-                  variant="ghost"
-                  aria-label="Batalkan pilihan"
-                  className="ml-auto text-primary-foreground hover:bg-primary-hover hover:text-primary-foreground"
+                  variant="secondary"
+                  className="h-8 px-3"
+                  disabled={disabled || selected.length === 0 || priceDigits(bulkPrice.trim()) === null}
                   onClick={() => {
-                    setSelected([]);
-                    closeBulk();
+                    const digits = priceDigits(bulkPrice.trim());
+                    if (digits !== null) runBulk({ kind: "price", digits });
                   }}
                 >
-                  <X className="size-4" />
+                  Samakan harga
+                </Button>
+                {!untimed && (
+                  <>
+                    <Input
+                      aria-label="Durasi untuk varian yang dicentang (menit)"
+                      type="number"
+                      min={1}
+                      max={MAX_DURATION_MIN}
+                      placeholder="Menit"
+                      value={bulkMinutes}
+                      onChange={(event) => setBulkMinutes(event.target.value)}
+                      disabled={disabled || selected.length === 0}
+                      className="h-8 w-20 text-sm tabular-nums"
+                    />
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant="secondary"
+                      className="h-8 px-3"
+                      disabled={disabled || selected.length === 0 || durationValue(bulkMinutes) === null}
+                      onClick={() => {
+                        const minutes = durationValue(bulkMinutes);
+                        if (minutes !== null) runBulk({ kind: "duration", minutes });
+                      }}
+                    >
+                      Samakan durasi
+                    </Button>
+                  </>
+                )}
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="secondary"
+                  className="h-8 px-3"
+                  disabled={disabled || selected.length === 0}
+                  onClick={() => runBulk({ kind: "toggle" })}
+                >
+                  Aktif / nonaktif
                 </Button>
               </div>
             )}
@@ -632,8 +516,8 @@ export function GroomingServiceVariantsEditor({
                       />
                     </TableHead>
                     <TableHead>Varian</TableHead>
-                    <TableHead className="w-44">Harga</TableHead>
-                    <TableHead className="w-36">Durasi</TableHead>
+                    <TableHead className="w-44">{untimed ? "Harga per malam" : "Harga"}</TableHead>
+                    {!untimed && <TableHead className="w-36">Durasi</TableHead>}
                     <TableHead className="w-20">Aktif</TableHead>
                   </TableRow>
                 </TableHeader>
@@ -671,10 +555,19 @@ export function GroomingServiceVariantsEditor({
                             row.active ? "text-foreground" : "text-muted",
                           )}
                         >
-                          {combo.label}
-                          {!row.active && (
-                            <span className="ml-1.5 text-xs font-normal">· nonaktif</span>
-                          )}
+                          <span className="flex flex-wrap items-center gap-2">
+                            {combo.label}
+                            {Number(priceDigits(row.price) ?? 0) === 0 && (
+                              <span className="rounded-full bg-tint-warning px-2 py-0.5 text-xs font-medium text-warning">
+                                Belum ada harga
+                              </span>
+                            )}
+                            {!row.active && (
+                              <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">
+                                Nonaktif
+                              </span>
+                            )}
+                          </span>
                         </TableCell>
                         <TableCell>
                           <Input
@@ -696,6 +589,7 @@ export function GroomingServiceVariantsEditor({
                             className="h-9 font-semibold tabular-nums"
                           />
                         </TableCell>
+                        {!untimed && (
                         <TableCell>
                           <div className="flex items-center gap-2">
                             <Input
@@ -719,13 +613,14 @@ export function GroomingServiceVariantsEditor({
                             <span className="text-xs text-muted">mnt</span>
                           </div>
                         </TableCell>
+                        )}
                         <TableCell>
-                          <Checkbox
+                          <Switch
                             aria-label={`${combo.label} aktif`}
                             checked={row.active}
                             disabled={disabled}
                             onCheckedChange={(next) =>
-                              change(updateRow(draft, combo.key, { active: next === true }))
+                              change(updateRow(draft, combo.key, { active: next }))
                             }
                           />
                         </TableCell>
@@ -812,6 +707,99 @@ export function GroomingServiceVariantsEditor({
               </div>
             )}
           </div>
+  );
+
+  return (
+    <div className="flex flex-col gap-6">
+      {mayUpdate && dirty && (
+        <DraftSaveBar
+          problem={
+            problem && (
+              <>
+                Belum bisa disimpan: <b className="font-semibold">{problem}</b>.
+              </>
+            )
+          }
+          saving={saving}
+          saveLabel="Simpan varian & harga"
+          onDiscard={discard}
+          onSave={() => void save()}
+        />
+      )}
+
+      {saveError && <Alert variant="error">{saveError}</Alert>}
+      {optionsError && (
+        <Alert variant="error">
+          Daftar jenis hewan, ukuran, dan bulu tidak bisa dimuat, jadi varian
+          belum bisa diubah. Muat ulang halamannya.
+        </Alert>
+      )}
+
+      <Card title="Tempat pengerjaan">
+        <div
+          role="radiogroup"
+          aria-label="Tempat pengerjaan"
+          className="grid gap-3 md:grid-cols-3"
+        >
+          {PLACES.map((place) => {
+            const checked = draft.place === place.value;
+
+            return (
+              <button
+                key={place.value}
+                type="button"
+                role="radio"
+                aria-checked={checked}
+                disabled={disabled}
+                onClick={() => change({ ...draft, place: place.value })}
+                className={cn(
+                  "rounded-xl border p-4 text-left transition focus-visible:border-primary focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none",
+                  checked
+                    ? "border-primary bg-surface-selected"
+                    : "border-border bg-surface enabled:hover:bg-surface-hover",
+                )}
+              >
+                <span className="block text-sm font-semibold text-foreground">
+                  {place.label}
+                </span>
+                <span className="mt-0.5 block text-xs text-muted">{place.hint}</span>
+              </button>
+            );
+          })}
+        </div>
+      </Card>
+
+      {untimed ? (
+        <Card title="Harga per malam">
+          <div className="flex flex-col gap-4">
+            {optionsBody}
+            {draft.axes.length === 0 ? flatBody : variantsBody}
+          </div>
+        </Card>
+      ) : (
+        <Card title="Opsi yang membedakan harga">{optionsBody}</Card>
+      )}
+
+      {untimed ? null : draft.axes.length === 0 ? (
+        <Card title={untimed ? "Harga per malam" : "Harga & durasi"}>
+          {flatBody}
+        </Card>
+      ) : (
+        <Card
+          /* No heading or counts on a hotel service (24 November 2026, on request). */
+          title={untimed ? undefined : "Daftar varian"}
+          action={
+            untimed ? undefined : <div className="flex gap-2">
+              <Badge variant="outline" className="border-transparent bg-tint-neutral text-muted tabular-nums">
+                {combos.length} varian
+              </Badge>
+              <Badge variant="outline" className="border-transparent bg-tint-neutral text-muted tabular-nums">
+                {activeCount} aktif
+              </Badge>
+            </div>
+          }
+        >
+          {variantsBody}
         </Card>
       )}
     </div>

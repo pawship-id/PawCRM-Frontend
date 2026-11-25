@@ -23,6 +23,7 @@ import { PetMedicalTab } from "./PetMedicalTab";
 import { PetPreferencesTab } from "./PetPreferencesTab";
 import { PetSummaryCard } from "./PetSummaryCard";
 import { PetTimelineTab } from "./PetTimelineTab";
+import { PetHotelHistory } from "@/features/hotel/components/PetHotelHistory";
 
 type Tab = "info" | "riwayat" | "preferensi" | "medis" | "membership";
 
@@ -98,7 +99,7 @@ export function PetProfileScreen({ petId }: { petId: string }) {
   /* Breed and species under the name are CODES; the words are the tenant's. */
   const { label } = usePetOptions();
   /* Membership is its own grant; without it the tab would only ever show a 403. */
-  const { can } = usePermissions();
+  const { can, isModuleOn } = usePermissions();
   const tabs = TABS.filter(
     (entry) => entry.id !== "membership" || can("petMemberships", "read"),
   );
@@ -346,6 +347,7 @@ export function PetProfileScreen({ petId }: { petId: string }) {
             <PetTimelineTab petId={pet._id} />
           </Card>
         )}
+        {tab === "riwayat" && can("bookings", "read") && isModuleOn("layanan") && <PetHotelHistory petId={pet._id} />}
 
         {tab === "preferensi" && (
           <Card

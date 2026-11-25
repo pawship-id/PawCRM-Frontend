@@ -1,5 +1,6 @@
 import type { ServiceFormOrigin } from "@/features/services/formOrigin";
 import { SETTINGS_PATHS, serviceFormPath } from "@/features/settings/paths";
+import type { Feature } from "@/features/permissions/types";
 import type { ServiceKind } from "@/types/api";
 
 import {
@@ -39,6 +40,11 @@ export interface ServiceLine {
    * — the board's fallback when it cannot read the catalogue. See `GroomingScope`.
    */
   fallbackName: string;
+  /**
+   * The grant the Ringkasan tab answers to — `serviceSummary` unless said.
+   * Hotel's is `hotel` (21 November 2026).
+   */
+  summaryFeature?: Feature;
   paths: {
     /**
      * The Ringkasan tab — Grooming only for now. The mockup builds the

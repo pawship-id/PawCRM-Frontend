@@ -195,11 +195,15 @@ export function ServiceSummaryPanel({
           value={bounds ? formatMoneyShort(bounds.low) : "—"}
           caption={priceCaption}
         />
-        <StatTile
-          label="Durasi"
-          value={minutesValue(duration)}
-          caption={duration === null ? "belum diisi" : "menit per booking"}
-        />
+        {service.serviceKind === "hotel" ? (
+          <StatTile label="Satuan" value="Per malam" caption="ditagih tiap malam menginap" />
+        ) : (
+          <StatTile
+            label="Durasi"
+            value={minutesValue(duration)}
+            caption={duration === null ? "belum diisi" : "menit per booking"}
+          />
+        )}
         <StatTile
           label="Tahapan"
           value={String(shares.length)}

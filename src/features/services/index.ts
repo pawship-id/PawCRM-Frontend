@@ -33,6 +33,7 @@ export {
 // values every one of those functions takes as an argument. See variantAxes.ts.
 export {
   buildVariantCombos,
+  scopeHotelAxisValues,
   comboKey,
   MAX_VARIANT_AXES,
   MAX_VARIANTS,
@@ -70,4 +71,5 @@ export {
   sessionWeightsError,
   sessionWeightsPayload,
   WEIGHTS_MIN_SESSIONS,
+  ServiceStepsWeightsTable,
 } from "./components/ServiceFormFields";

@@ -368,6 +368,11 @@ const ACTION_META: Record<string, ActionMeta> = {
     tone: "warning",
     category: "pengaturan",
   },
+  hotel_settings_updated: {
+    label: "Pengaturan hotel diubah",
+    tone: "warning",
+    category: "pengaturan",
+  },
   groomer_app_settings_updated: {
     label: "Pengaturan aplikasi groomer diubah",
     tone: "warning",

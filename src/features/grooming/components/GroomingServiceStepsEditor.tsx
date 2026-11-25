@@ -1,9 +1,20 @@
 "use client";
 
-import { useState, type KeyboardEvent, type SetStateAction } from "react";
+import {
+  useEffect,
+  useState,
+  type KeyboardEvent,
+  type SetStateAction,
+} from "react";
 import { GripVertical, X } from "lucide-react";
 
-import { Alert, Card, Spinner } from "@/components";
+import {
+  Alert,
+  AutoSaveStatus,
+  Card,
+  Spinner,
+  type AutoSaveState,
+} from "@/components";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -15,9 +26,14 @@ import {
   ServiceStepFlagBadge,
   serviceStepFlag,
   ServiceStepPicker,
+  ServiceStepsWeightsTable,
   sessionsRefusal,
 } from "@/features/services";
-import { invalidateServiceSteps, useServiceSteps } from "@/hooks/useServiceSteps";
+import { ServiceStepFormDialog } from "@/features/settings/components/ServiceStepFormDialog";
+import {
+  invalidateServiceSteps,
+  useServiceSteps,
+} from "@/hooks/useServiceSteps";
 import { swalToast } from "@/lib/swal";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
@@ -27,23 +43,32 @@ import type { ServiceKind, Service, UpdateServiceInput } from "@/types/api";
 import { statusOf } from "../serviceDisplay";
 import {
   addStep,
+  clockTimeOf,
+  fixedTimeText,
   MAX_SESSIONS,
   moveStep,
   removeStep,
   seedSteps,
+  setTime,
   setWeight,
   splitEvenly,
   stepsPatch,
   stepsProblem,
   stepsSignature,
   stepsTotal,
+  withoutFixedTimes,
   type StepsDraft,
 } from "../serviceStepsDraft";
 import { DraftSaveBar } from "./DraftSaveBar";
 
+/** How long a hotel service waits after the last change before saving. */
+const AUTO_SAVE_DELAY_MS = 600;
+
 /** The same add-ons, whatever order they were ticked in. */
 function sameIds(a: string[], b: string[]): boolean {
-  return a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",");
+  return (
+    a.length === b.length && [...a].sort().join(",") === [...b].sort().join(",")
+  );
 }
 
 export interface AddonCatalog {
@@ -126,13 +151,43 @@ export function GroomingServiceStepsEditor({
   /* The Kelompok layanan — which add-ons are offered below. */
   const kind = service.serviceKind ?? moduleKind ?? null;
 
-  const disabled = !mayUpdate || saving;
+  /* A HOTEL tahapan has a default clock time (21 November 2026). */
+  const withTimes = kind === "hotel";
+  /*
+    A HOTEL SERVICE SAVES ITSELF (BO, 22 November 2026) — like Hotel ›
+    Pengaturan › Kegiatan harian: no Simpan bar, each change is sent shortly
+    after the last one, and the fields stay usable while it goes. Grooming
+    keeps its Simpan.
+  */
+  const autoSave = withTimes && mayUpdate;
+  const [autoStatus, setAutoStatus] = useState<AutoSaveState>("idle");
+  /** The last patch sent, so a server spelling that differs cannot loop. */
+  const [sentKey, setSentKey] = useState<string | null>(null);
+  /** The typed name "Buat tahapan baru…" opened the form with; null = closed. */
+  const [creating, setCreating] = useState<string | null>(null);
+  const busy = autoSave ? false : saving;
+
+  const disabled = !mayUpdate || busy;
   const storedAddonIds = service.addonServiceIds ?? [];
   const isMain = service.serviceType === "main";
-  const stepsDirty = stepsSignature(draft) !== stepsSignature(seedSteps(service));
+  /*
+    Dipakai di (23 November 2026): a main service picks tahapan for its own
+    kind, an add-on for the kinds it is offered with (none = every step).
+  */
+  const stepKinds: ServiceKind[] = isMain
+    ? kind
+      ? [kind]
+      : []
+    : (service.serviceKinds ?? []);
+  /* A tahapan whose Jam default (hotel) is words keeps no clock time. */
+  const cleanDraft = withTimes
+    ? withoutFixedTimes(draft, (name) => stepList.stepFor(name)?.hotelTime)
+    : draft;
+  const stepsDirty =
+    stepsSignature(cleanDraft) !== stepsSignature(seedSteps(service));
   const addonsDirty = isMain && !sameIds(addonIds, storedAddonIds);
   const dirty = stepsDirty || addonsDirty;
-  const problem = stepsProblem(draft);
+  const problem = stepsProblem(cleanDraft);
   const total = stepsTotal(draft);
   const single = draft.sessions.length === 1;
 
@@ -172,13 +227,52 @@ export function GroomingServiceStepsEditor({
     setSaveError(null);
   }
 
+  function patchOf(): UpdateServiceInput {
+    return {
+      ...(stepsDirty ? stepsPatch(cleanDraft, { withTimes }) : {}),
+      ...(addonsDirty ? { addonServiceIds: addonIds } : {}),
+    };
+  }
+
+  const autoPatch = autoSave && dirty && !problem ? patchOf() : null;
+  const autoKey = autoPatch ? JSON.stringify(autoPatch) : null;
+  const autoPending = autoKey !== null && autoKey !== sentKey;
+
+  useEffect(() => {
+    if (!autoPending || !autoPatch || !autoKey) return;
+    const patch = autoPatch;
+    const key = autoKey;
+    const timer = window.setTimeout(async () => {
+      setSentKey(key);
+      setAutoStatus("saving");
+      setSaveError(null);
+      try {
+        // The draft is NOT reseeded: what was typed meanwhile stays.
+        const updated = await serviceService.update(service._id, patch);
+        setAutoStatus("saved");
+        onSaved(updated);
+      } catch (err) {
+        // Not retried on its own; the next change tries again.
+        const refusal = sessionsRefusal(err);
+        if (refusal) invalidateServiceSteps();
+        setAutoStatus("error");
+        setSaveError(
+          refusal ??
+            (err instanceof ApiError
+              ? (err.reason ?? err.fullMessage)
+              : "Tahapan & add-on belum tersimpan. Coba lagi."),
+        );
+      }
+    }, AUTO_SAVE_DELAY_MS);
+    return () => window.clearTimeout(timer);
+    // `autoKey` is the whole of what changed; the patch it was built from rides along.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [autoKey, autoPending]);
+
   async function save() {
     if (problem || saving || !dirty) return;
 
-    const patch: UpdateServiceInput = {
-      ...(stepsDirty ? stepsPatch(draft) : {}),
-      ...(addonsDirty ? { addonServiceIds: addonIds } : {}),
-    };
+    const patch = patchOf();
 
     setSaving(true);
     setSaveError(null);
@@ -213,7 +307,10 @@ export function GroomingServiceStepsEditor({
         ? null
         : { label: "Dibagi rata", className: "bg-tint-neutral text-muted" }
       : total === 100
-        ? { label: `Total ${total}%`, className: "bg-tint-success text-success" }
+        ? {
+            label: `Total ${total}%`,
+            className: "bg-tint-success text-success",
+          }
         : { label: `Total ${total}%`, className: "bg-tint-danger text-danger" };
 
   const addonOptions = addons.all.filter(
@@ -236,7 +333,7 @@ export function GroomingServiceStepsEditor({
 
   return (
     <div className="flex flex-col gap-6">
-      {mayUpdate && dirty && (
+      {mayUpdate && !autoSave && dirty && (
         <DraftSaveBar
           problem={problem && <b className="font-semibold">{problem}</b>}
           saving={saving}
@@ -250,17 +347,67 @@ export function GroomingServiceStepsEditor({
 
       <Card
         title="Tahapan & bobot komisi"
+        description={
+          autoSave
+            ? "Perubahan tahapan dan add-on di layanan ini langsung tersimpan."
+            : undefined
+        }
         action={
-          badge && (
-            <Badge
-              variant="outline"
-              className={cn("border-transparent tabular-nums", badge.className)}
-            >
-              {badge.label}
-            </Badge>
-          )
+          <span className="flex flex-wrap items-center gap-3">
+            {autoSave && (
+              <AutoSaveStatus
+                status={
+                  autoPending && autoStatus !== "saving" ? "saving" : autoStatus
+                }
+              />
+            )}
+            {badge && (
+              <Badge
+                variant="outline"
+                className={cn(
+                  "border-transparent tabular-nums",
+                  badge.className,
+                )}
+              >
+                {badge.label}
+              </Badge>
+            )}
+          </span>
         }
       >
+        {autoSave && problem && (
+          <p className="mb-3 text-sm font-semibold text-danger">
+            {problem} Belum disimpan sampai dibetulkan.
+          </p>
+        )}
+        {withTimes ? (
+          /* The same table as the service form (24 November 2026, on request). */
+          <ServiceStepsWeightsTable
+            sessions={draft.sessions}
+            kept={service.sessions ?? []}
+            maxItems={MAX_SESSIONS}
+            mayAddToList={mayUpdate}
+            kinds={stepKinds}
+            weights={draft.weights}
+            times={draft.times}
+            disabled={disabled}
+            hideNote
+            onCreate={mayUpdate ? setCreating : undefined}
+            onStepsChange={(update) =>
+              change((current) => {
+                const sessions = update(current.sessions);
+                const times = { ...current.times };
+                sessions.forEach((name) => {
+                  if (!(name in times)) times[name] = clockTimeOf(stepList.stepFor(name)?.hotelTime) ?? "";
+                });
+                return { ...current, sessions, times };
+              })
+            }
+            onWeightsChange={(weights) => change((current) => ({ ...current, weights }))}
+            onTimeChange={(name, time) => change((current) => setTime(current, name, time))}
+          />
+        ) : (
+          <>
         {draft.sessions.length === 0 ? (
           <p className="text-sm text-muted">
             Belum ada tahapan.
@@ -272,79 +419,108 @@ export function GroomingServiceStepsEditor({
               const flag = serviceStepFlag(name, stepList);
 
               return (
-              <li
-                key={name}
-                draggable={mayUpdate && armed === index}
-                onDragStart={(event) => {
-                  event.dataTransfer.effectAllowed = "move";
-                  event.dataTransfer.setData("text/plain", name);
-                  setDragging(index);
-                }}
-                onDragOver={(event) => {
-                  if (dragging === null) return;
-                  event.preventDefault();
-                  if (dragging !== index) {
-                    change(moveStep(draft, dragging, index));
+                <li
+                  key={name}
+                  draggable={mayUpdate && armed === index}
+                  onDragStart={(event) => {
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", name);
                     setDragging(index);
-                  }
-                }}
-                onDrop={(event) => event.preventDefault()}
-                onDragEnd={() => {
-                  setDragging(null);
-                  setArmed(null);
-                }}
-                className={cn(
-                  "flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2",
-                  dragging === index && "border-primary opacity-60",
-                )}
-              >
-                {mayUpdate && (
-                  <button
-                    type="button"
-                    aria-label={`Pindahkan ${name}`}
-                    title="Seret untuk mengubah urutan, atau tekan panah atas/bawah"
-                    disabled={saving}
-                    onPointerDown={() => setArmed(index)}
-                    onPointerUp={() => setArmed(null)}
-                    onKeyDown={(event) => moveByKey(event, index)}
-                    className="flex size-9 flex-none cursor-grab items-center justify-center rounded-md text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
-                  >
-                    <GripVertical className="size-4" />
-                  </button>
-                )}
-                <span className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                  <span className="text-sm font-semibold text-foreground">
-                    {name}
+                  }}
+                  onDragOver={(event) => {
+                    if (dragging === null) return;
+                    event.preventDefault();
+                    if (dragging !== index) {
+                      change(moveStep(draft, dragging, index));
+                      setDragging(index);
+                    }
+                  }}
+                  onDrop={(event) => event.preventDefault()}
+                  onDragEnd={() => {
+                    setDragging(null);
+                    setArmed(null);
+                  }}
+                  className={cn(
+                    "flex items-center gap-3 rounded-xl border border-border bg-surface px-3 py-2",
+                    dragging === index && "border-primary opacity-60",
+                  )}
+                >
+                  {mayUpdate && (
+                    <button
+                      type="button"
+                      aria-label={`Pindahkan ${name}`}
+                      title="Seret untuk mengubah urutan, atau tekan panah atas/bawah"
+                      disabled={busy}
+                      onPointerDown={() => setArmed(index)}
+                      onPointerUp={() => setArmed(null)}
+                      onKeyDown={(event) => moveByKey(event, index)}
+                      className="flex size-9 flex-none cursor-grab items-center justify-center rounded-md text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
+                    >
+                      <GripVertical className="size-4" />
+                    </button>
+                  )}
+                  <span className="min-w-0 flex-1">
+                    <span className="flex flex-wrap items-center gap-2">
+                      <span className="text-sm font-semibold text-foreground">
+                        {name}
+                      </span>
+                      {flag && <ServiceStepFlagBadge flag={flag} />}
+                    </span>
+                    {/* Catatan from Pengaturan › Tahapan — hotel only
+                        (23 November 2026). */}
+                    {withTimes && stepList.stepFor(name)?.note && (
+                      <span className="mt-0.5 block text-xs text-muted">
+                        {stepList.stepFor(name)?.note}
+                      </span>
+                    )}
                   </span>
-                  {flag && <ServiceStepFlagBadge flag={flag} />}
-                </span>
-                <Input
-                  aria-label={`Bobot ${name} (%)`}
-                  inputMode="numeric"
-                  // One tahapan takes the whole commission, whatever is typed.
-                  value={single ? "100" : (draft.weights[name] ?? "")}
-                  disabled={disabled || single}
-                  onChange={(event) =>
-                    change(setWeight(draft, name, event.target.value))
-                  }
-                  placeholder="rata"
-                  className="h-9 w-20 text-right tabular-nums"
-                />
-                <span className="text-sm text-muted">%</span>
-                {mayUpdate && (
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    aria-label={`Hapus tahapan ${name}`}
-                    disabled={saving}
-                    onClick={() => change(removeStep(draft, index))}
-                    className="size-9 p-0 text-muted hover:bg-tint-danger hover:text-danger"
-                  >
-                    <X className="size-4" />
-                  </Button>
-                )}
-              </li>
+                  {withTimes &&
+                  fixedTimeText(stepList.stepFor(name)?.hotelTime) ? (
+                    <span className="w-32 text-sm text-muted">
+                      {fixedTimeText(stepList.stepFor(name)?.hotelTime)}
+                    </span>
+                  ) : (
+                    withTimes && (
+                      <Input
+                        type="time"
+                        aria-label={`Jam default ${name}`}
+                        title="Jam default — kosongkan kalau tahapan ini tidak perlu jam"
+                        value={draft.times[name] ?? ""}
+                        disabled={disabled}
+                        onChange={(event) =>
+                          change(setTime(draft, name, event.target.value))
+                        }
+                        className="h-9 w-32 tabular-nums"
+                      />
+                    )
+                  )}
+                  <Input
+                    aria-label={`Bobot ${name} (%)`}
+                    inputMode="numeric"
+                    // One tahapan takes the whole commission, whatever is typed.
+                    value={single ? "100" : (draft.weights[name] ?? "")}
+                    disabled={disabled || single}
+                    onChange={(event) =>
+                      change(setWeight(draft, name, event.target.value))
+                    }
+                    placeholder="rata"
+                    className="h-9 w-20 text-right tabular-nums"
+                  />
+                  <span className="text-sm text-muted">%</span>
+                  {mayUpdate && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      aria-label={`Hapus tahapan ${name}`}
+                      disabled={busy}
+                      onClick={() => change(removeStep(draft, index))}
+                      className="size-9 p-0 text-muted hover:bg-tint-danger hover:text-danger"
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  )}
+                </li>
               );
             })}
           </ol>
@@ -355,24 +531,38 @@ export function GroomingServiceStepsEditor({
             <ServiceStepPicker
               taken={draft.sessions}
               mayAddToList={mayUpdate}
-              disabled={saving}
+              disabled={busy}
+              onCreate={withTimes ? setCreating : undefined}
+              kinds={stepKinds}
               disabledReason={
                 draft.sessions.length >= MAX_SESSIONS
                   ? `Maksimal ${MAX_SESSIONS} tahapan.`
                   : null
               }
-              onPick={(name) => change((current) => addStep(current, name))}
+              onPick={(name) =>
+                change((current) =>
+                  addStep(
+                    current,
+                    name,
+                    withTimes
+                      ? clockTimeOf(stepList.stepFor(name)?.hotelTime)
+                      : null,
+                  ),
+                )
+              }
             />
             <Button
               type="button"
               variant="secondary"
               size="sm"
-              disabled={saving || draft.sessions.length < 2}
+              disabled={busy || draft.sessions.length < 2}
               onClick={() => change(splitEvenly(draft))}
             >
               Bagi rata
             </Button>
           </div>
+        )}
+          </>
         )}
       </Card>
 
@@ -391,8 +581,8 @@ export function GroomingServiceStepsEditor({
           </Alert>
         ) : addonOptions.length === 0 ? (
           <p className="text-sm text-muted">
-            Belum ada layanan yang ditandai sebagai add-on. Buat layanannya dengan
-            jenis “Add-on”, nanti muncul di sini.
+            Belum ada layanan yang ditandai sebagai add-on. Buat layanannya
+            dengan jenis “Add-on”, nanti muncul di sini.
           </p>
         ) : (
           <>
@@ -414,7 +604,10 @@ export function GroomingServiceStepsEditor({
                           : "border-border bg-surface",
                         locked
                           ? "cursor-not-allowed"
-                          : cn("cursor-pointer", !checked && "hover:bg-surface-hover"),
+                          : cn(
+                              "cursor-pointer",
+                              !checked && "hover:bg-surface-hover",
+                            ),
                       )}
                     >
                       <Checkbox
@@ -460,6 +653,21 @@ export function GroomingServiceStepsEditor({
           </>
         )}
       </Card>
+
+      {creating !== null && (
+        <ServiceStepFormDialog
+          initialName={creating}
+          defaultUsedIn={stepKinds}
+          description="Masuk ke daftar tahapan di Pengaturan › Tahapan dan langsung jadi tahapan layanan ini."
+          onClose={() => setCreating(null)}
+          onSaved={() => invalidateServiceSteps()}
+          onCreated={(step) =>
+            change((current) =>
+              addStep(current, step.name, clockTimeOf(step.hotelTime)),
+            )
+          }
+        />
+      )}
     </div>
   );
 }

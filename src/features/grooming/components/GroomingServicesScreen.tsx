@@ -204,7 +204,9 @@ export function GroomingServicesScreen({
 
   const listed = !error && !(loading && services.length === 0);
 
-  const columns: DataTableColumn<Service>[] = [
+  /* A HOTEL service has no place to go and no length: it bills by the night (21 November 2026). */
+  const hotel = serviceLine.serviceKind === "hotel";
+  const allColumns: DataTableColumn<Service>[] = [
     {
       id: "name",
       header: "Layanan",
@@ -356,6 +358,11 @@ export function GroomingServicesScreen({
       },
     },
   ];
+  const columns = hotel
+    ? allColumns
+        .filter((column) => column.id !== "duration" && column.id !== "place")
+        .map((column) => (column.id === "price" ? { ...column, header: "Harga per malam" } : column))
+    : allColumns;
 
   return (
     <div className="flex flex-col gap-6">

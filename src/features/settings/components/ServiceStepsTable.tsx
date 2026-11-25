@@ -35,6 +35,7 @@ import { serviceStepService } from "@/services/serviceStep.service";
 import { swalToast } from "@/lib/swal";
 import type { ServiceStep } from "@/types/api";
 
+import { formatEstimate, formatUsedIn, stepUsedIn } from "../serviceSteps";
 import { reorderPatches } from "../sortOrder";
 import { ListItemStatus } from "./ListItemStatus";
 
@@ -183,15 +184,21 @@ export function ServiceStepsTable({
           <TableHeader>
             <TableRow>
               <TableHead>Nama</TableHead>
+              <TableHead>Dipakai di</TableHead>
+              <TableHead className="text-right">Estimasi</TableHead>
+              <TableHead>Jam default (hotel)</TableHead>
               <TableHead className="text-right">Dipakai</TableHead>
               <TableHead>Status</TableHead>
-              {showActions && <TableHead className="text-right">Aksi</TableHead>}
+              {showActions && (
+                <TableHead className="text-right">Aksi</TableHead>
+              )}
             </TableRow>
           </TableHeader>
           <TableBody>
             {rows.map((step) => {
               const deleted = step.deletedAt !== null;
               const position = live.indexOf(step);
+              const usedIn = stepUsedIn(step);
 
               return (
                 <TableRow key={step._id}>
@@ -201,6 +208,24 @@ export function ServiceStepsTable({
                     }
                   >
                     {step.name}
+                    {step.note && (
+                      <span className="mt-0.5 block max-w-md text-xs font-normal whitespace-normal text-muted">
+                        {step.note}
+                      </span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm">
+                    {formatUsedIn(usedIn)}
+                  </TableCell>
+                  <TableCell className="text-right text-sm tabular-nums">
+                    {formatEstimate(step.estimateMinutes) ?? (
+                      <span className="text-muted">—</span>
+                    )}
+                  </TableCell>
+                  <TableCell className="text-sm tabular-nums">
+                    {(usedIn.includes("hotel") && step.hotelTime) || (
+                      <span className="text-muted">—</span>
+                    )}
                   </TableCell>
                   <TableCell className="text-right text-sm tabular-nums">
                     <UsedBy step={step} />
@@ -230,7 +255,8 @@ export function ServiceStepsTable({
                                   <DropdownMenuItem
                                     onSelect={() =>
                                       void run(
-                                        () => serviceStepService.restore(step._id),
+                                        () =>
+                                          serviceStepService.restore(step._id),
                                         "Tahapan dipulihkan.",
                                       )
                                     }
@@ -246,7 +272,7 @@ export function ServiceStepsTable({
                                       onSelect={() => onRename(step)}
                                     >
                                       <Pencil />
-                                      Ubah nama
+                                      Ubah
                                     </DropdownMenuItem>
                                     {/* Disabled rather than hidden at the
                                         ends, so the menu keeps its shape. */}
@@ -268,9 +294,12 @@ export function ServiceStepsTable({
                                       onSelect={() =>
                                         void run(
                                           () =>
-                                            serviceStepService.update(step._id, {
-                                              isActive: !step.isActive,
-                                            }),
+                                            serviceStepService.update(
+                                              step._id,
+                                              {
+                                                isActive: !step.isActive,
+                                              },
+                                            ),
                                           step.isActive
                                             ? "Tahapan dinonaktifkan."
                                             : "Tahapan diaktifkan.",

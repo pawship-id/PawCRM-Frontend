@@ -91,6 +91,15 @@ const STATUS_OPTIONS = withAll(
   "Semua status",
 );
 
+const KIND_OPTIONS = withAll(
+  [
+    { value: "grooming", label: "Grooming" },
+    { value: "hotel", label: "Hotel" },
+  ],
+  "Semua layanan",
+);
+const KIND_LABEL: Record<string, string> = { grooming: "Grooming", hotel: "Hotel" };
+
 /**
  * KOMISI — one row per booking × groomer, from the BO mockup
  * (`buloo-keuangan-komisi.html`, 21 September 2026).
@@ -151,6 +160,7 @@ export function CommissionScreen({ now }: { now: string }) {
   const filtered =
     query.search.trim() !== "" ||
     query.status !== "" ||
+    query.serviceKind !== "" ||
     query.branchIds.length > 0 ||
     query.businessLineIds.length > 0 ||
     query.dateFrom !== "" ||
@@ -296,6 +306,13 @@ export function CommissionScreen({ now }: { now: string }) {
       onRemove: () => setQuery({ status: "" }),
     });
   }
+  if (query.serviceKind) {
+    chips.push({
+      key: "serviceKind",
+      label: KIND_LABEL[query.serviceKind],
+      onRemove: () => setQuery({ serviceKind: "" }),
+    });
+  }
 
   const columns = commissionColumns({
     search: query.search,
@@ -404,7 +421,7 @@ export function CommissionScreen({ now }: { now: string }) {
             searchPlacement="leading"
             searchClassName="min-w-[12rem] flex-1"
             chips={chips}
-            onClearAll={() => setQuery({ status: "" })}
+            onClearAll={() => setQuery({ status: "", serviceKind: "" })}
             search={
               <FilterSearch
                 value={query.search}
@@ -422,6 +439,14 @@ export function CommissionScreen({ now }: { now: string }) {
               value={query.status}
               options={STATUS_OPTIONS}
               onChange={(status) => setQuery({ status })}
+            />
+            <FilterSelect
+              layout="bar"
+              label="Layanan"
+              ariaLabel="Filter jenis layanan"
+              value={query.serviceKind}
+              options={KIND_OPTIONS}
+              onChange={(serviceKind) => setQuery({ serviceKind: serviceKind as "" | "grooming" | "hotel" })}
             />
           </FilterBar>
 

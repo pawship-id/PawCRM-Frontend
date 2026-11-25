@@ -26,15 +26,33 @@ export interface StepsDraft {
   sessions: string[];
   /** Tahapan name → per cent as typed. All empty = split evenly. */
   weights: Record<string, string>;
+  /**
+   * HOTEL ONLY (21 November 2026): tahapan name → default clock time "HH:mm",
+   * or "" for none. Keyed by name like the weights, so a moved row keeps it.
+   */
+  times: Record<string, string>;
 }
 
+/** "HH:mm", 00:00–23:59 — `SESSION_TIME_PATTERN` in service.model.js. */
+const TIME_PATTERN = /^([01]\d|2[0-3]):[0-5]\d$/;
+
 /** The draft a stored service starts as. Weights that do not line up are dropped. */
-export function seedSteps(service: Service): StepsDraft {
+export function seedSteps(
+  service: Pick<Service, "sessions"> &
+    Partial<Pick<Service, "sessionWeights" | "sessionTimes">>,
+): StepsDraft {
   const sessions = service.sessions ?? [];
   const stored = service.sessionWeights ?? [];
+  const times = service.sessionTimes ?? [];
 
   return {
     sessions: [...sessions],
+    times:
+      times.length === sessions.length
+        ? Object.fromEntries(
+            sessions.map((session, index) => [session, times[index] ?? ""]),
+          )
+        : {},
     weights:
       stored.length > 0 && stored.length === sessions.length
         ? Object.fromEntries(
@@ -57,7 +75,43 @@ export function hasStep(draft: StepsDraft, name: string): boolean {
  * `name` is stored as given (trimmed) — pass the LINE LIST'S spelling, which is
  * what the picker hands over (`step.name`), since the server stores that one.
  */
-export function addStep(draft: StepsDraft, name: string): StepsDraft {
+/**
+ * The clock time inside a step's Jam default (hotel), which is free text
+ * (22 November 2026): "08:00" / "8.00" → "08:00"; "Ikut jam datang" → null.
+ */
+export function clockTimeOf(text: string | null | undefined): string | null {
+  const match = /^([01]?\d|2[0-3])[:.]([0-5]\d)$/.exec((text ?? "").trim());
+  return match ? `${match[1].padStart(2, "0")}:${match[2]}` : null;
+}
+
+/**
+ * A Jam default (hotel) that is words, not a clock time — "Ikut jam datang".
+ * Shown as is and not editable where a step's time is set; null otherwise.
+ */
+export function fixedTimeText(text: string | null | undefined): string | null {
+  const trimmed = (text ?? "").trim();
+  return trimmed && !clockTimeOf(trimmed) ? trimmed : null;
+}
+
+/** Times dropped for the steps whose Jam default (hotel) is words. */
+export function withoutFixedTimes(
+  draft: StepsDraft,
+  hotelTimeOf: (name: string) => string | null | undefined,
+): StepsDraft {
+  const times = Object.fromEntries(
+    Object.entries(draft.times).filter(
+      ([name]) => !fixedTimeText(hotelTimeOf(name)),
+    ),
+  );
+  return { ...draft, times };
+}
+
+export function addStep(
+  draft: StepsDraft,
+  name: string,
+  /** The step's Jam default (hotel), filled in when the list has one. */
+  defaultTime?: string | null,
+): StepsDraft {
   const trimmed = name.trim().slice(0, SESSION_MAX_LENGTH);
   if (
     trimmed === "" ||
@@ -67,7 +121,10 @@ export function addStep(draft: StepsDraft, name: string): StepsDraft {
     return draft;
   }
 
-  return { ...draft, sessions: [...draft.sessions, trimmed] };
+  const next = { ...draft, sessions: [...draft.sessions, trimmed] };
+  return defaultTime && !draft.times[trimmed]
+    ? { ...next, times: { ...draft.times, [trimmed]: defaultTime } }
+    : next;
 }
 
 /** A tahapan removed, and its weight with it; the others keep theirs. */
@@ -77,15 +134,22 @@ export function removeStep(draft: StepsDraft, index: number): StepsDraft {
 
   const weights = { ...draft.weights };
   delete weights[name];
+  const times = { ...draft.times };
+  delete times[name];
 
   return {
     sessions: draft.sessions.filter((_, position) => position !== index),
     weights,
+    times,
   };
 }
 
 /** A tahapan moved from one position to another — a drag, or an arrow key. */
-export function moveStep(draft: StepsDraft, from: number, to: number): StepsDraft {
+export function moveStep(
+  draft: StepsDraft,
+  from: number,
+  to: number,
+): StepsDraft {
   if (
     from === to ||
     from < 0 ||
@@ -109,6 +173,15 @@ export function setWeight(
   text: string,
 ): StepsDraft {
   return { ...draft, weights: { ...draft.weights, [name]: text } };
+}
+
+/** A tahapan's default clock time — "" clears it. Hotel only. */
+export function setTime(
+  draft: StepsDraft,
+  name: string,
+  time: string,
+): StepsDraft {
+  return { ...draft, times: { ...draft.times, [name]: time } };
 }
 
 /** "Bagi rata": whole per cents that add up to exactly 100 — `[34, 33, 33]`. */
@@ -144,14 +217,32 @@ export function stepsTotal(draft: StepsDraft): number | null {
 
 /** Why the draft cannot be saved yet, as a sentence — or null. */
 export function stepsProblem(draft: StepsDraft): string | null {
+  const bad = draft.sessions.find((session) => {
+    const time = (draft.times[session] ?? "").trim();
+    return time !== "" && !TIME_PATTERN.test(time);
+  });
+  if (bad)
+    return `Jam ${bad} belum benar — tulis seperti 08:00, atau kosongkan.`;
   return sessionWeightsError(draft.sessions, draft.weights);
 }
 
+/** Times by position, or `[]` when no tahapan has one — what the API stores. */
+export function sessionTimesPayload(draft: StepsDraft): (string | null)[] {
+  const times = draft.sessions.map(
+    (session) => (draft.times[session] ?? "").trim() || null,
+  );
+  return times.every((time) => time === null) ? [] : times;
+}
+
 /** The PATCH a valid draft becomes. Call it only when `stepsProblem` is null. */
-export function stepsPatch(draft: StepsDraft): UpdateServiceInput {
+export function stepsPatch(
+  draft: StepsDraft,
+  { withTimes = false } = {},
+): UpdateServiceInput {
   return {
     sessions: draft.sessions,
     sessionWeights: sessionWeightsPayload(draft.sessions, draft.weights),
+    ...(withTimes ? { sessionTimes: sessionTimesPayload(draft) } : {}),
   };
 }
 
@@ -162,5 +253,6 @@ export function stepsSignature(draft: StepsDraft): string {
     draft.sessions.length < WEIGHTS_MIN_SESSIONS
       ? []
       : draft.sessions.map((session) => (draft.weights[session] ?? "").trim()),
+    sessionTimesPayload(draft),
   ]);
 }

@@ -52,6 +52,7 @@ import {
   topServicesReport,
 } from "../operationsReports";
 import { SalesReportDialog } from "./SalesReportDialog";
+import { hotelNightsReport } from "@/features/hotel/hotelNightsReport";
 
 /**
  * The Laporan landing page, as the v3 mockup draws it: four tabs (Penjualan,
@@ -134,6 +135,7 @@ type ReportDialog =
   | "consignmentOnHand"
   | "staffPerformance"
   | "bookingRecap"
+  | "hotelNights"
   | "topServices"
   | "membership"
   | "commissionPayroll"
@@ -171,6 +173,7 @@ const REPORT_DIALOGS: Record<
   bookingRecap: (props) => (
     <SalesReportDialog report={bookingRecapReport} {...props} />
   ),
+  hotelNights: (props) => <SalesReportDialog report={hotelNightsReport} {...props} />,
   staffPerformance: (props) => (
     <SalesReportDialog report={staffPerformanceReport} {...props} />
   ),
@@ -459,6 +462,12 @@ const ROWS: Record<TabKey, ReportRow[]> = {
       title: "Rekap booking",
       description: "Booking menurut status, pembatalan, dan jadwal ulang.",
       dialog: "bookingRecap",
+      anyOf: [{ feature: "bookings", action: "read" }],
+    },
+    {
+      title: "Hotel per malam",
+      description: "Satu baris per hewan per malam: kamar, harga, PIC, dan tugas yang selesai.",
+      dialog: "hotelNights",
       anyOf: [{ feature: "bookings", action: "read" }],
     },
     {

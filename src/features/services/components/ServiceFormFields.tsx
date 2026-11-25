@@ -2,29 +2,31 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Plus, RotateCcw, X } from "lucide-react";
+import { GripVertical, Plus, RotateCcw, X } from "lucide-react";
 
 import {
   Alert,
-  CheckRow,
-  CheckRowGroup,
   FIELD_HEIGHT,
   Spinner,
 } from "@/components";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { Label } from "@/components/ui/label";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
 import { useServiceSteps } from "@/hooks/useServiceSteps";
+import { fixedTimeText } from "@/features/grooming/serviceStepsDraft";
 import { cn } from "@/lib/utils";
 import type {
+  Service,
   ServiceKind,
   ServiceLocation,
   ServiceVariantAxis,
   VariantAxisKey,
 } from "@/types/api";
 
+import { formatServicePrice } from "../format";
 import { MAX_VARIANTS, type VariantAxisDef, type VariantCombo } from "../variantAxes";
 import {
   ServiceStepFlagBadge,
@@ -91,20 +93,6 @@ export const VARIANT_AXIS_FIELDS: Array<{
  * of `MAX_VARIANTS`; the rows stay drawn — what was typed is not thrown away —
  * and the form's Simpan stays off until an axis is unticked.
  */
-/**
- * The hint under an axis checkbox — the pet's three keep their reason; Zona and
- * a staff card say where the answer comes from, then the card's own note.
- */
-function axisHint(def: VariantAxisDef): string {
-  const pet = VARIANT_AXIS_FIELDS.find((entry) => entry.axis === def.key);
-  if (pet) return pet.hint;
-  const where =
-    def.source === "zone"
-      ? "Otomatis dari jarak alamat pelanggan ke cabang."
-      : "Dipilih staf saat booking, kasir, dan faktur.";
-  return def.description ? `${where} ${def.description}` : where;
-}
-
 export function ServiceVariantEditor({
   axes,
   fixedAxes = [],
@@ -122,7 +110,10 @@ export function ServiceVariantEditor({
   onActiveChange,
   kindName = null,
   onReloadOptions,
+  untimed = false,
 }: {
+  /** A HOTEL service: no length column — it bills by the night (21 November 2026). */
+  untimed?: boolean;
   /**
    * The kind of service's name — said when it has no options yet (22 September
    * 2026), so the empty list reads as "set this up" rather than as a checklist
@@ -157,7 +148,7 @@ export function ServiceVariantEditor({
 }) {
   /* A system card (the trip card) is never a checkbox — see `fixedAxes`. */
   const axisDefs = offeredDefs.filter(
-    (def) => !def.systemKey && !fixedAxes.includes(def.key),
+    (def) => def.systemKey !== "trip" && !fixedAxes.includes(def.key),
   );
   const hasFixed = fixedAxes.length > 0;
 
@@ -213,18 +204,30 @@ export function ServiceVariantEditor({
             dicentang.
           </p>
         )}
-        <CheckRowGroup className="mt-2">
-          {axisDefs.map((def) => (
-            <CheckRow
-              key={def.key}
-              label={def.name}
-              description={axisHint(def)}
-              checked={axes.includes(def.key)}
-              onCheckedChange={(checked) => onToggleAxis(def.key, checked)}
-              disabled={disabled}
-            />
-          ))}
-        </CheckRowGroup>
+        {/* Side by side as chips (24 November 2026, on request). */}
+        <div className="mt-2 flex flex-wrap gap-2">
+          {axisDefs.map((def) => {
+            const checked = axes.includes(def.key);
+            return (
+              <label
+                key={def.key}
+                className={cn(
+                  "flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold transition",
+                  "has-[:focus-visible]:border-primary has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+                  checked ? "border-primary bg-tint-info text-foreground" : "border-border bg-surface hover:bg-surface-hover",
+                  disabled && "cursor-not-allowed opacity-60",
+                )}
+              >
+                <Checkbox
+                  checked={checked}
+                  onCheckedChange={(next) => onToggleAxis(def.key, next === true)}
+                  disabled={disabled}
+                />
+                {def.name}
+              </label>
+            );
+          })}
+        </div>
       </div>
 
       {loading && axes.length > 0 ? (
@@ -232,28 +235,31 @@ export function ServiceVariantEditor({
           <Spinner size={16} /> Memuat jenis hewan, ukuran, dan bulu…
         </div>
       ) : combos.length > 0 && (
-        <div className="flex flex-col gap-3 border-t border-border pt-4">
+        <div className={cn("flex flex-col gap-3", !untimed && "border-t border-border pt-4")}>
+          {/* Not on a hotel form (24 November 2026, on request). */}
+          {!untimed && (
           <div>
-            <p className="text-sm font-medium">
-              Harga & durasi per varian{" "}
-              <span className="font-normal text-muted">
-                ({combos.length} baris)
-              </span>
-            </p>
-            {/*
-              ─── EACH VARIANT ITS OWN LENGTH AND ITS OWN ON/OFF ──────────────
-
-              Decided 13 September 2026. A large long-haired dog does not take as
-              long as a small short-haired one, so the minutes sit beside the
-              price rather than once above the grid. A variant switched off stays
-              in the grid — it is still a combination the service has — but the
-              booking form and the till will not let anybody choose it.
-            */}
-            <p className="mt-1 text-xs text-muted">
-              Varian yang tidak dicentang Aktif tetap tampil, tapi tidak bisa
-              dipilih di booking maupun kasir.
-            </p>
-          </div>
+              <p className="text-sm font-medium">
+                Harga & durasi per varian{" "}
+                <span className="font-normal text-muted">
+                  ({combos.length} baris)
+                </span>
+              </p>
+              {/*
+                ─── EACH VARIANT ITS OWN LENGTH AND ITS OWN ON/OFF ──────────────
+  
+                Decided 13 September 2026. A large long-haired dog does not take as
+                long as a small short-haired one, so the minutes sit beside the
+                price rather than once above the grid. A variant switched off stays
+                in the grid — it is still a combination the service has — but the
+                booking form and the till will not let anybody choose it.
+              */}
+              <p className="mt-1 text-xs text-muted">
+                Varian yang tidak dicentang Aktif tetap tampil, tapi tidak bisa
+                dipilih di booking maupun kasir.
+              </p>
+            </div>
+          )}
 
           {combos.length > MAX_VARIANTS && (
             <Alert variant="error">
@@ -263,73 +269,17 @@ export function ServiceVariantEditor({
             </Alert>
           )}
 
-          <div
-            aria-hidden
-            className="hidden gap-3 text-xs font-semibold text-muted sm:grid sm:grid-cols-[1fr_160px_120px_72px]"
-          >
-            <span>Varian</span>
-            <span>Harga</span>
-            <span>Durasi (menit)</span>
-            <span>Aktif</span>
-          </div>
-
-          <div className="flex flex-col gap-3">
-            {combos.map((combo) => {
-              const on = active[combo.key] !== false;
-
-              return (
-                <div
-                  key={combo.key}
-                  className="grid items-center gap-3 sm:grid-cols-[1fr_160px_120px_72px]"
-                >
-                  <span className={cn("text-sm", !on && "text-muted")}>
-                    {combo.label}
-                    {!on && <span className="ml-1.5 text-xs">· nonaktif</span>}
-                  </span>
-                  {/*
-                    An `aria-label` rather than a `TextField`: the row's own text
-                    IS the label, and repeating it above every box would make a
-                    twelve-row grid read as twelve stacked fields.
-                  */}
-                  <Input
-                    aria-label={`Harga ${combo.label}`}
-                    inputMode="numeric"
-                    value={prices[combo.key] ?? ""}
-                    onChange={(event) =>
-                      onPriceChange(combo.key, event.target.value)
-                    }
-                    placeholder="150000"
-                    disabled={disabled}
-                    className={FIELD_HEIGHT}
-                  />
-                  <Input
-                    aria-label={`Durasi ${combo.label} (menit)`}
-                    type="number"
-                    min={1}
-                    max={1440}
-                    value={durations[combo.key] ?? ""}
-                    onChange={(event) =>
-                      onDurationChange(combo.key, event.target.value)
-                    }
-                    placeholder="60"
-                    disabled={disabled}
-                    className={FIELD_HEIGHT}
-                  />
-                  <label className="flex min-h-11 items-center gap-2 text-sm">
-                    <Checkbox
-                      aria-label={`${combo.label} aktif`}
-                      checked={on}
-                      onCheckedChange={(next) =>
-                        onActiveChange(combo.key, next === true)
-                      }
-                      disabled={disabled}
-                    />
-                    <span className="sm:sr-only">Aktif</span>
-                  </label>
-                </div>
-              );
-            })}
-          </div>
+          <VariantBulkTable
+            combos={combos}
+            prices={prices}
+            durations={durations}
+            active={active}
+            untimed={untimed}
+            disabled={disabled}
+            onPriceChange={onPriceChange}
+            onDurationChange={onDurationChange}
+            onActiveChange={onActiveChange}
+          />
         </div>
       )}
 
@@ -470,7 +420,10 @@ export function ServiceStepsField({
   error,
   disabled,
   onChange,
+  kinds,
 }: {
+  /** Dipakai di — only tahapan for these kinds of service are offered. */
+  kinds?: ServiceKind[] | null;
   sessions: string[];
   /** Names the server keeps whatever the list says — what the service stored. */
   kept: string[];
@@ -540,6 +493,7 @@ export function ServiceStepsField({
         mayAddToList={mayAddToList}
         disabled={disabled}
         disabledReason={full ? `Maksimal ${maxItems} tahapan.` : null}
+        kinds={kinds}
         onPick={(name) =>
           onChange((current) =>
             current.length >= maxItems ||
@@ -864,13 +818,16 @@ export function ServiceAddonPicker({
   selected,
   disabled,
   onChange,
+  perUnit = false,
 }: {
-  addons: Array<{ _id: string; name: string; code: string }>;
+  addons: Array<Pick<Service, "_id" | "name" | "code" | "hasVariants" | "price" | "variants" | "billingUnit">>;
   loading: boolean;
   loadError: string | null;
   selected: string[];
   disabled: boolean;
   onChange: (next: string[]) => void;
+  /** Say how a hotel add-on is counted — "/ malam" or "/ kali" (24 November 2026). */
+  perUnit?: boolean;
 }) {
   if (loadError) {
     return <p className="text-xs text-danger">{loadError}</p>;
@@ -893,24 +850,512 @@ export function ServiceAddonPicker({
     );
   }
 
+  /* Chips, each with its price (24 November 2026, on request). */
   return (
-    <CheckRowGroup>
-      {addons.map((addon) => (
-        <CheckRow
-          key={addon._id}
-          label={addon.name}
-          description={addon.code}
-          checked={selected.includes(addon._id)}
-          disabled={disabled}
-          onCheckedChange={(checked) =>
-            onChange(
-              checked
-                ? [...selected, addon._id]
-                : selected.filter((id) => id !== addon._id),
-            )
-          }
-        />
-      ))}
-    </CheckRowGroup>
+    <div className="flex flex-wrap gap-2">
+      {addons.map((addon) => {
+        const checked = selected.includes(addon._id);
+        return (
+          <label
+            key={addon._id}
+            className={cn(
+              "flex min-h-11 cursor-pointer items-center gap-3 rounded-full border px-4 py-2 text-sm transition",
+              "has-[:focus-visible]:border-primary has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+              checked ? "border-primary bg-tint-info" : "border-border bg-surface hover:bg-surface-hover",
+              disabled && "cursor-not-allowed opacity-60",
+            )}
+          >
+            <Checkbox
+              checked={checked}
+              disabled={disabled}
+              onCheckedChange={(next) =>
+                onChange(next === true ? [...selected, addon._id] : selected.filter((id) => id !== addon._id))
+              }
+            />
+            <span className="font-semibold text-foreground">{addon.name}</span>
+            <span className="text-muted tabular-nums">
+              {formatServicePrice(addon)}
+              {/* "/ kali" hidden for now (24 November 2026, on request). */}
+              {perUnit && addon.billingUnit === "per_night" && " / malam"}
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  );
+}
+
+/** Digits only — "150.000" and "Rp 150000" both read as 150000. */
+const digitsOf = (value: string | undefined) => (value ?? "").replace(/\D/g, "");
+
+/**
+ * The per-variant grid with BULK EDIT (24 November 2026, on request): tick rows
+ * — or the header box for all — then set one price for all of them ("Samakan
+ * harga", the box then emptied) or flip them on/off together.
+ * A row with no price yet says so on a badge, since an empty box and a 0 look
+ * alike at a glance.
+ */
+function VariantBulkTable({
+  combos,
+  prices,
+  durations,
+  active,
+  untimed,
+  disabled,
+  onPriceChange,
+  onDurationChange,
+  onActiveChange,
+}: {
+  combos: VariantCombo[];
+  prices: Record<string, string>;
+  durations: Record<string, string>;
+  active: Record<string, boolean>;
+  untimed: boolean;
+  disabled: boolean;
+  onPriceChange: (key: string, value: string) => void;
+  onDurationChange: (key: string, value: string) => void;
+  onActiveChange: (key: string, active: boolean) => void;
+}) {
+  const [picked, setPicked] = useState<string[]>([]);
+  const [bulkPrice, setBulkPrice] = useState("");
+  const [bulkDuration, setBulkDuration] = useState("");
+
+  /* A ticked row whose combination went away (an axis unticked) is dropped. */
+  const keys = combos.map((combo) => combo.key);
+  const selected = picked.filter((key) => keys.includes(key));
+  const allPicked = selected.length > 0 && selected.length === keys.length;
+  const somePicked = selected.length > 0 && !allPicked;
+  const none = selected.length === 0;
+  const amount = digitsOf(bulkPrice);
+
+  function toggle(key: string, on: boolean) {
+    setPicked(on ? [...selected, key] : selected.filter((one) => one !== key));
+  }
+
+  function samePrice() {
+    selected.forEach((key) => onPriceChange(key, amount));
+    setBulkPrice("");
+  }
+
+  function sameDuration() {
+    selected.forEach((key) => onDurationChange(key, digitsOf(bulkDuration)));
+  }
+
+  function flipActive() {
+    const allOn = selected.every((key) => active[key] !== false);
+    selected.forEach((key) => onActiveChange(key, !allOn));
+  }
+
+  const columns = untimed
+    ? "grid-cols-[44px_1fr_minmax(120px,200px)_72px]"
+    : "grid-cols-[44px_1fr_minmax(120px,180px)_minmax(90px,120px)_72px]";
+
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="flex flex-wrap items-center gap-2 rounded-xl border border-border bg-background px-4 py-2.5">
+        <span className="mr-1 text-sm text-muted">
+          {none ? "Centang varian untuk mengubah sekaligus" : `${selected.length} varian dipilih`}
+        </span>
+        <div className="relative w-36">
+          <span className="pointer-events-none absolute top-1/2 left-2.5 -translate-y-1/2 text-xs text-muted">Rp</span>
+          <Input
+            aria-label="Ubah harga varian yang dicentang"
+            inputMode="numeric"
+            placeholder="Harga"
+            value={bulkPrice}
+            onChange={(event) => setBulkPrice(event.target.value)}
+            disabled={disabled || none}
+            className="h-8 pl-8 text-right text-sm tabular-nums"
+          />
+        </div>
+        <Button type="button" variant="secondary" size="sm" className="h-8 px-3" disabled={disabled || none || amount === ""} onClick={samePrice}>
+          Samakan harga
+        </Button>
+        {!untimed && (
+          <>
+            <Input
+              aria-label="Durasi untuk varian yang dicentang (menit)"
+              type="number"
+              min={1}
+              max={1440}
+              placeholder="Menit"
+              value={bulkDuration}
+              onChange={(event) => setBulkDuration(event.target.value)}
+              disabled={disabled || none}
+              className="h-8 w-20 text-sm tabular-nums"
+            />
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              className="h-8 px-3"
+              disabled={disabled || none || digitsOf(bulkDuration) === ""}
+              onClick={sameDuration}
+            >
+              Samakan durasi
+            </Button>
+          </>
+        )}
+        <Button type="button" variant="secondary" size="sm" className="h-8 px-3" disabled={disabled || none} onClick={flipActive}>
+          Aktif / nonaktif
+        </Button>
+      </div>
+
+      <div className="overflow-hidden rounded-xl border border-border">
+        <div className={cn("grid items-center gap-3 border-b border-border bg-background px-4 py-3 text-sm font-semibold text-muted", columns)}>
+          <Checkbox
+            aria-label="Centang semua varian"
+            checked={allPicked ? true : somePicked ? "indeterminate" : false}
+            onCheckedChange={(next) => setPicked(next === true ? keys : [])}
+            disabled={disabled}
+          />
+          <span>Varian</span>
+          <span>{untimed ? "Harga per malam" : "Harga"}</span>
+          {!untimed && <span>Durasi (menit)</span>}
+          <span>Aktif</span>
+        </div>
+        {combos.map((combo) => {
+          const on = active[combo.key] !== false;
+          const priced = Number(digitsOf(prices[combo.key]) || 0) > 0;
+          return (
+            <div
+              key={combo.key}
+              className={cn(
+                "grid items-center gap-3 border-b border-border px-4 py-2.5 last:border-b-0",
+                columns,
+                selected.includes(combo.key) && "bg-navy-100",
+              )}
+            >
+              <Checkbox
+                aria-label={`Pilih ${combo.label}`}
+                checked={selected.includes(combo.key)}
+                onCheckedChange={(next) => toggle(combo.key, next === true)}
+                disabled={disabled}
+              />
+              <span className={cn("flex flex-wrap items-center gap-2 text-sm font-semibold", !on && "text-muted")}>
+                {combo.label}
+                {!priced && (
+                  <span className="rounded-full bg-tint-warning px-2 py-0.5 text-xs font-medium text-warning">Belum ada harga</span>
+                )}
+                {!on && <span className="rounded-full bg-tint-neutral px-2 py-0.5 text-xs font-medium text-muted">Nonaktif</span>}
+              </span>
+              <div className="relative">
+                <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted">Rp</span>
+                <Input
+                  aria-label={`Harga ${combo.label}`}
+                  inputMode="numeric"
+                  value={prices[combo.key] ?? ""}
+                  onChange={(event) => onPriceChange(combo.key, event.target.value)}
+                  placeholder="0"
+                  disabled={disabled}
+                  className="h-10 pl-9 text-right tabular-nums"
+                />
+              </div>
+              {!untimed && (
+                <Input
+                  aria-label={`Durasi ${combo.label} (menit)`}
+                  type="number"
+                  min={1}
+                  max={1440}
+                  value={durations[combo.key] ?? ""}
+                  onChange={(event) => onDurationChange(combo.key, event.target.value)}
+                  placeholder="60"
+                  disabled={disabled}
+                  className="h-10 tabular-nums"
+                />
+              )}
+              <Switch
+                aria-label={`${combo.label} aktif`}
+                checked={on}
+                onCheckedChange={(next) => onActiveChange(combo.key, next)}
+                disabled={disabled}
+              />
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * TAHAPAN AND THEIR COMMISSION SHARE IN ONE TABLE (24 November 2026, on request
+ * — the hotel form first). The same rules as `ServiceStepsField` +
+ * `SessionWeightsEditor`: tahapan come from the list; weights are all empty
+ * (split evenly) or whole per cents adding up to exactly 100; one tahapan takes
+ * the whole commission, so its box reads 100% and cannot be typed in.
+ */
+export function ServiceStepsWeightsTable({
+  sessions,
+  kept,
+  maxItems,
+  mayAddToList,
+  kinds,
+  weights,
+  times,
+  stepsError,
+  weightsError,
+  disabled,
+  onStepsChange,
+  onWeightsChange,
+  onTimeChange,
+  onCreate,
+  hideNote = false,
+}: {
+  /**
+   * Opens the caller's own tahapan form for a new name (the detail tab, which
+   * saves itself and so cannot wait for a submit). Absent = the form's deferred
+   * add: a new name is put on the list when the form is saved.
+   */
+  onCreate?: (typedName: string) => void;
+  /** Leave the explanation line out — the caller says it elsewhere. */
+  hideNote?: boolean;
+  sessions: string[];
+  kept: string[];
+  maxItems: number;
+  mayAddToList: boolean;
+  kinds?: ServiceKind[] | null;
+  weights: Record<string, string>;
+  /** Each tahapan's clock time as shown ("HH:mm" or ""), by name. */
+  times: Record<string, string>;
+  stepsError?: string;
+  weightsError?: string;
+  disabled: boolean;
+  onStepsChange: (update: (current: string[]) => string[]) => void;
+  onWeightsChange: (next: Record<string, string>) => void;
+  onTimeChange: (name: string, time: string) => void;
+}) {
+  const list = useServiceSteps();
+  const keptKeys = new Set(kept.map((name) => name.trim().toLowerCase()));
+  const flags = sessions.map((name) => serviceStepFlag(name, list));
+  /* A name not on the list is NEW — added to it when the form is saved (24 November 2026). */
+  const refused = sessions.filter(
+    (name, index) => flags[index] === "nonaktif" && !keptKeys.has(name.trim().toLowerCase()),
+  );
+  const full = sessions.length >= maxItems;
+  const split = sessions.length >= WEIGHTS_MIN_SESSIONS;
+  const typed = typedWeights(sessions, weights);
+  const filled = typed.some((value) => value !== "");
+  const total = typed.reduce((sum, value) => sum + (/^\d+$/.test(value) ? Number(value) : 0), 0);
+  const cols = "grid grid-cols-[36px_1fr_120px_130px_44px] items-center gap-3";
+  /* Dragged by its handle only, so a drag never starts from an input (the detail tab's pattern). */
+  const [armed, setArmed] = useState<number | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
+
+  function moveTo(from: number, to: number) {
+    onStepsChange((current) => {
+      if (to < 0 || to >= current.length || from === to) return current;
+      const next = [...current];
+      const [row] = next.splice(from, 1);
+      next.splice(to, 0, row);
+      return next;
+    });
+  }
+
+  return (
+    <div className="flex flex-col gap-3">
+      {!hideNote && (
+      <div>
+        <p className="text-sm font-medium">Tahapan, jam & bobot komisi</p>
+        <p className="mt-1 text-xs text-muted">
+          Jam berlaku tiap malam dan bisa diubah per booking. Kosongkan bobot supaya komisinya
+          dibagi rata; kalau diisi, totalnya pas 100%.
+        </p>
+      </div>
+      )}
+
+      {sessions.length > 0 && (
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <div className="min-w-140">
+            <div className={cn(cols, "border-b border-border bg-background px-4 py-2.5 text-sm font-semibold text-muted")}>
+              {/* Empty cells that keep their column — an sr-only span leaves the grid. */}
+              <span>
+                <span className="sr-only">Urutan</span>
+              </span>
+              <span>Tahapan</span>
+              <span>Jam</span>
+              <span>Bobot komisi</span>
+              <span>
+                <span className="sr-only">Hapus</span>
+              </span>
+            </div>
+            {sessions.map((name, index) => (
+              <div
+                key={name}
+                draggable={!disabled && armed === index}
+                onDragStart={(event) => {
+                  event.dataTransfer.effectAllowed = "move";
+                  event.dataTransfer.setData("text/plain", name);
+                  setDragging(index);
+                }}
+                onDragOver={(event) => {
+                  if (dragging === null) return;
+                  event.preventDefault();
+                  if (dragging !== index) {
+                    moveTo(dragging, index);
+                    setDragging(index);
+                  }
+                }}
+                onDrop={(event) => event.preventDefault()}
+                onDragEnd={() => {
+                  setDragging(null);
+                  setArmed(null);
+                }}
+                className={cn(
+                  cols,
+                  "border-b border-border bg-surface px-4 py-2 last:border-b-0",
+                  dragging === index && "bg-surface-selected opacity-70",
+                )}
+              >
+                <button
+                  type="button"
+                  aria-label={`Pindahkan ${name} — seret, atau tekan panah atas/bawah`}
+                  disabled={disabled}
+                  onPointerDown={() => setArmed(index)}
+                  onPointerUp={() => setArmed(null)}
+                  onKeyDown={(event) => {
+                    if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                      event.preventDefault();
+                      moveTo(index, index + (event.key === "ArrowUp" ? -1 : 1));
+                    }
+                  }}
+                  className="flex size-9 cursor-grab items-center justify-center rounded-md text-muted transition hover:bg-surface-hover hover:text-foreground focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none active:cursor-grabbing"
+                >
+                  <GripVertical className="size-4" aria-hidden />
+                </button>
+                <span className="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                  <span className="tabular-nums text-muted">{index + 1}.</span>
+                  {name}
+                  {flags[index] === "belum di daftar" ? (
+                    <span className="rounded-full bg-tint-info px-2 py-0.5 text-xs font-medium text-primary">
+                      Baru
+                    </span>
+                  ) : (
+                    flags[index] && <ServiceStepFlagBadge flag={flags[index]} />
+                  )}
+                </span>
+                {/* A Jam default that is words ("Ikut jam datang") is shown, not edited (24 November 2026). */}
+                {fixedTimeText(list.stepFor(name)?.hotelTime) ? (
+                  <span className="text-sm text-muted">{fixedTimeText(list.stepFor(name)?.hotelTime)}</span>
+                ) : (
+                  <Input
+                    aria-label={`Jam ${name}`}
+                    type="time"
+                    value={times[name] ?? ""}
+                    onChange={(event) => onTimeChange(name, event.target.value)}
+                    disabled={disabled}
+                    className="h-9 tabular-nums"
+                  />
+                )}
+                {split ? (
+                  <span className="flex items-center gap-2">
+                    <Input
+                      aria-label={`Bobot ${name} (%)`}
+                      inputMode="numeric"
+                      value={weights[name] ?? ""}
+                      onChange={(event) => onWeightsChange({ ...weights, [name]: event.target.value })}
+                      placeholder="rata"
+                      disabled={disabled}
+                      className="h-9 text-right tabular-nums"
+                    />
+                    <span className="text-sm text-muted">%</span>
+                  </span>
+                ) : (
+                  <span className="text-sm text-muted tabular-nums">100%</span>
+                )}
+                <button
+                  type="button"
+                  aria-label={`Hapus tahapan ${name}`}
+                  className="flex size-9 items-center justify-center rounded-full text-muted transition hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                  disabled={disabled}
+                  onClick={() => {
+                    onStepsChange((current) => current.filter((session) => session !== name));
+                    const rest = { ...weights };
+                    delete rest[name];
+                    onWeightsChange(rest);
+                  }}
+                >
+                  <X className="size-4" aria-hidden />
+                </button>
+              </div>
+            ))}
+            {split && (
+              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-border bg-background px-4 py-2.5">
+                <p className="text-sm">
+                  Total bobot{" "}
+                  <span
+                    className={
+                      !filled || total === 100
+                        ? "font-semibold tabular-nums text-foreground"
+                        : "font-semibold tabular-nums text-danger"
+                    }
+                  >
+                    {filled ? `${total}%` : "dibagi rata"}
+                  </span>
+                </p>
+                <span className="flex gap-2">
+                  {filled && (
+                    <Button type="button" variant="ghost" size="sm" className="h-8" disabled={disabled} onClick={() => onWeightsChange({})}>
+                      Kosongkan
+                    </Button>
+                  )}
+                  <Button
+                    type="button"
+                    variant="secondary"
+                    size="sm"
+                    className="h-8"
+                    disabled={disabled}
+                    onClick={() => {
+                      const even = evenSessionWeights(sessions.length);
+                      onWeightsChange(Object.fromEntries(sessions.map((session, i) => [session, String(even[i])])));
+                    }}
+                  >
+                    Bagi rata
+                  </Button>
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {!onCreate && sessions.some((_, index) => flags[index] === "belum di daftar") && (
+        <p className="text-xs text-muted">
+          Tahapan bertanda <b className="font-semibold">Baru</b> ditambahkan ke daftar tahapan saat layanan disimpan.
+        </p>
+      )}
+
+      {refused.length > 0 && (
+        <Alert variant="warning">
+          {refused.map((name) => `“${name}”`).join(", ")} sudah dinonaktifkan di daftar tahapan. Hapus, lalu pilih
+          penggantinya — kalau tidak, layanan ini ditolak saat disimpan.
+        </Alert>
+      )}
+
+      <ServiceStepPicker
+        taken={sessions}
+        mayAddToList={mayAddToList}
+        deferAdd={!onCreate}
+        onCreate={onCreate}
+        disabled={disabled}
+        disabledReason={full ? `Maksimal ${maxItems} tahapan.` : null}
+        kinds={kinds}
+        onPick={(name) =>
+          onStepsChange((current) =>
+            current.length >= maxItems ||
+            current.some((session) => session.toLowerCase() === name.toLowerCase())
+              ? current
+              : [...current, name],
+          )
+        }
+        className={FIELD_HEIGHT}
+      />
+
+      {(stepsError || weightsError) && (
+        <p role="alert" className="text-xs font-semibold text-danger">
+          {stepsError ?? weightsError}
+        </p>
+      )}
+    </div>
   );
 }

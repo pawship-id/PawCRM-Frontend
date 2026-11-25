@@ -33,7 +33,7 @@ export function GroomingModuleHeader({
   // Kalender's grant, and Layanan & Harga and Pengaturan are one grant each
   // across Grooming and Antar-Jemput.
   const tabs: PageTab[] = [
-    ...(line.paths.summary && can("serviceSummary", "read")
+    ...(line.paths.summary && can(line.summaryFeature ?? "serviceSummary", "read")
       ? [
           {
             label: "Ringkasan",

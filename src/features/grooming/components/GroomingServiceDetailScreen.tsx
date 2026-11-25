@@ -82,12 +82,15 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
           hasVariants: true,
           variantAxes: service.variantAxes,
           variants: service.variants.map(
-            ({ petType, sizeCategory, furType, price, durationMin, isActive }) => ({
+            ({ petType, sizeCategory, furType, zoneId, choices, price, durationMin, isActive }) => ({
               petType,
               sizeCategory,
               furType,
+              // A zone or a "Dipilih staf" option is part of the row's identity.
+              ...(zoneId ? { zoneId } : {}),
+              ...(choices?.length ? { choices } : {}),
               price,
-              durationMin: durationMin as number,
+              durationMin: service.serviceKind === "hotel" ? null : (durationMin as number),
               isActive: isActive !== false,
             }),
           ),
@@ -95,7 +98,7 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
       : {
           hasVariants: false,
           price: service.price as string,
-          durationMin: service.durationMin as number,
+          ...(service.serviceKind === "hotel" ? {} : { durationMin: service.durationMin as number }),
         }),
     ...(service.categoryId ? { categoryId: service.categoryId } : {}),
     ...(service.salesAccountId ? { salesAccountId: service.salesAccountId } : {}),
@@ -105,6 +108,9 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
     description: service.description,
     sessions: service.sessions ?? [],
     sessionWeights: service.sessionWeights ?? [],
+    sessionTimes: service.sessionTimes ?? [],
+    roomTypeIds: service.roomTypeIds ?? [],
+    petTypeIds: service.petTypeIds ?? [],
     allBranches: service.allBranches,
     branchIds: service.allBranches ? [] : service.branchIds,
     serviceType: service.serviceType,
@@ -122,6 +128,10 @@ function copyOf(service: Service, suffix: string): CreateServiceInput {
  * what a create needs. Null when it can be made.
  */
 function copyBlockedBy(service: Service): string | null {
+  // A hotel service has no length to copy (21 November 2026).
+  if (service.serviceKind === "hotel") {
+    return !service.hasVariants && service.price === null ? "Isi harganya dulu lewat Ubah." : null;
+  }
   if (service.hasVariants) {
     return (service.variants ?? []).some((variant) => variant.durationMin === null)
       ? "Isi durasi tiap variannya dulu lewat Ubah."

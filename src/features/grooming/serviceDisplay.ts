@@ -58,6 +58,7 @@ export const PLACE_LONG: Record<ServicePlace, string> = {
 export const BILLING_UNIT_LABELS: Record<ServiceBillingUnit, string> = {
   per_pet: "Per hewan",
   per_visit: "Per kunjungan",
+  per_night: "Per malam",
 };
 
 export const AXIS_LABELS: Record<ServiceVariantAxis, string> = {

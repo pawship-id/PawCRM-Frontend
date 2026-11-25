@@ -15,19 +15,26 @@ import {
   TextField,
   TextareaField,
 } from "@/components";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 // Deep, not the barrel — same reason as the grooming import below: the
 // accounting index reaches back into settings, which imports this feature.
 import { useSubAccounts } from "@/features/accounting/hooks/useSubAccounts";
 import { usePermissions } from "@/features/permissions";
-import { invalidateServiceSteps } from "@/hooks/useServiceSteps";
+import {
+  invalidateServiceSteps,
+  useServiceSteps,
+} from "@/hooks/useServiceSteps";
 import { ApiError } from "@/services/api-error";
+import { serviceStepService } from "@/services/serviceStep.service";
 import { serviceService } from "@/services/service.service";
 import { branchService } from "@/services/branch.service";
+import { tenantService } from "@/services/tenant.service";
 import { swalToast } from "@/lib/swal";
 import type {
   Branch,
+  HotelSettings,
   Service,
   ServiceBillingUnit,
   ServiceLocation,
@@ -39,13 +46,16 @@ import type {
 import { SERVICE_KIND_LABELS, SERVICE_KINDS } from "@/types/api";
 import type { MediaAsset } from "@/types/inventory";
 
+import { usePetOptions } from "@/hooks/usePetOptions";
 import { invalidateVariantOptions } from "@/hooks/useVariantOptions";
+import { HotelRoomTypesField, roomTypeFits } from "./HotelRoomTypesField";
 import { useVariantAxisValues } from "../hooks/useVariantAxisValues";
 import {
   axisDefsForKind,
   buildVariantCombos,
   comboKey,
   MAX_VARIANTS,
+  scopeHotelAxisValues,
 } from "../variantAxes";
 import { ServiceKindsField } from "./ServiceKindsField";
 import {
@@ -59,6 +69,7 @@ import {
   ServiceBranchScope,
   ServiceVariantEditor,
   SessionWeightsEditor,
+  ServiceStepsWeightsTable,
   sessionWeightsError,
   sessionWeightsPayload,
   ServiceStepsField,
@@ -68,7 +79,10 @@ import { ServiceSalesAccountField } from "./ServiceSalesAccountField";
 import { sessionsRefusal } from "./ServiceStepPicker";
 // Deep, not the barrel: the grooming index imports this feature back.
 import { GROOMING_CATALOG_PATH } from "@/features/grooming/paths";
+import { clockTimeOf, fixedTimeText } from "@/features/grooming/serviceStepsDraft";
 import { serviceSettingsPath } from "@/features/settings/serviceSettingsSections";
+import { cn } from "@/lib/utils";
+import { useHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
 
 /** Backend caps — NAME_MAX_LENGTH and friends in service.model.js. */
 const NAME_MAX_LENGTH = 160;
@@ -132,7 +146,9 @@ function durationProblem(value: string): string | null {
   if (trimmed === "") return "empty";
 
   const minutes = Number(trimmed);
-  return Number.isInteger(minutes) && minutes >= 1 && minutes <= MAX_DURATION_MIN
+  return Number.isInteger(minutes) &&
+    minutes >= 1 &&
+    minutes <= MAX_DURATION_MIN
     ? null
     : "range";
 }
@@ -179,11 +195,7 @@ function durationProblem(value: string): string | null {
  *    is sixty rows against a MAX_VARIANTS of twenty. Simpan says so and stays
  *    off until an axis is unticked, rather than sending a save to be refused.
  */
-export function ServiceForm({
-  serviceId,
-}: {
-  serviceId?: string;
-}) {
+export function ServiceForm({ serviceId }: { serviceId?: string }) {
   const editing = serviceId !== undefined;
   const router = useRouter();
   // Adding a missing tahapan to the list is `services:update`, which a
@@ -245,7 +257,8 @@ export function ServiceForm({
   const originRef = useRef<ServiceFormOrigin | null | undefined>(undefined);
   const [listPath, setListPath] = useState(LIST_PATH);
   const originOf = () => {
-    if (originRef.current === undefined) originRef.current = readServiceFormOrigin();
+    if (originRef.current === undefined)
+      originRef.current = readServiceFormOrigin();
     return originRef.current;
   };
   const [kindError, setKindError] = useState<string | null>(null);
@@ -287,6 +300,20 @@ export function ServiceForm({
   /* An add-on's "Dipakai di layanan" — empty is every kind (22 September 2026). */
   const [addonKinds, setAddonKinds] = useState<ServiceKind[]>([]);
   const [isActive, setIsActive] = useState(true);
+  /* A HOTEL service's room types — "Berlaku untuk" (21 November 2026). */
+  const [roomTypeIds, setRoomTypeIds] = useState<string[]>([]);
+  /* Jenis hewan a hotel service takes — required from 23 November 2026. */
+  const [petTypeIds, setPetTypeIds] = useState<string[]>([]);
+  const [petTypesError, setPetTypesError] = useState<string | null>(null);
+  const speciesOptions = usePetOptions()
+    .ordered("species")
+    .filter((option) => option.isActive || petTypeIds.includes(option._id));
+  /* Tahapan name → stored default clock time, so a reorder here keeps each one's. */
+  const [storedTimes, setStoredTimes] = useState<Record<string, string | null>>(
+    {},
+  );
+  /* A hotel step picked here with no time of its own takes the list's Jam default (hotel). */
+  const stepList = useServiceSteps();
 
   const [nameError, setNameError] = useState<string | null>(null);
   const [codeError, setCodeError] = useState<string | null>(null);
@@ -310,10 +337,15 @@ export function ServiceForm({
     axes: axisDefs,
     loading: axisValuesLoading,
   } = useVariantAxisValues();
-  const axisValues = useMemo(
-    () => valuesFor(service?.variants),
-    [valuesFor, service],
-  );
+  const hotelRoomTypes = useHotelRoomTypes();
+  const roomTypeAxis = axisDefs.find((def) => def.systemKey === "roomType")?.key ?? null;
+  const axisValues = useMemo(() => {
+    const table = valuesFor(service?.variants);
+    /* A hotel service offers rows only for its own animals and room types (24 November 2026). */
+    return serviceType === "main" && serviceKind === "hotel"
+      ? scopeHotelAxisValues(table, { petTypeIds, roomTypeIds, roomTypeAxis, roomTypes: hotelRoomTypes.items })
+      : table;
+  }, [valuesFor, service, serviceType, serviceKind, petTypeIds, roomTypeIds, roomTypeAxis, hotelRoomTypes.items]);
   const combos = useMemo(
     () => buildVariantCombos(variantAxes, axisValues),
     [variantAxes, axisValues],
@@ -330,9 +362,65 @@ export function ServiceForm({
     stays — off is one price for every ride — and a NEW ride service opens with
     it on. Leaving the kind takes the trip axis off again.
   */
-  const tripAxis = axisDefs.find((def) => def.systemKey === "trip")?.key ?? null;
+  const tripAxis =
+    axisDefs.find((def) => def.systemKey === "trip")?.key ?? null;
   const isRide = serviceType === "main" && serviceKind === "pickup-delivery";
+  /* A HOTEL service bills by the night, has no length and no place to go (21 November 2026). */
+  const isHotel = serviceType === "main" && serviceKind === "hotel";
   const ridePriced = isRide && tripAxis !== null;
+  /*
+    A NEW HOTEL SERVICE STARTS WITH THE KEGIATAN HARIAN of Layanan › Hotel ›
+    Pengaturan (BO, 21 November 2026) — names, porsi and jam — and may change
+    them before saving. Once per form, and only while its tahapan are still
+    empty, so nothing somebody already picked is overwritten. Fails softly: a
+    form without them is the form as it always was.
+  */
+  const [hotelDefaults, setHotelDefaults] = useState<
+    HotelSettings["defaultSteps"] | null
+  >(null);
+  const hotelDefaultsAsked = useRef(false);
+  const hotelDefaultsApplied = useRef(false);
+  useEffect(() => {
+    if (editing || !isHotel || hotelDefaultsAsked.current) return;
+    hotelDefaultsAsked.current = true;
+    let active = true;
+    tenantService
+      .me()
+      .then((tenant) => {
+        const steps = tenant.settings?.hotel?.defaultSteps;
+        if (active && steps && steps.sessions.length > 0)
+          setHotelDefaults(steps);
+      })
+      .catch(() => undefined);
+    return () => {
+      active = false;
+    };
+  }, [editing, isHotel]);
+  /* eslint-disable react-hooks/set-state-in-effect -- seeded once, when the defaults arrive */
+  useEffect(() => {
+    if (!hotelDefaults || !isHotel || hotelDefaultsApplied.current) return;
+    hotelDefaultsApplied.current = true;
+    if (sessions.length > 0) return;
+    const names = hotelDefaults.sessions;
+    const weights = hotelDefaults.sessionWeights ?? [];
+    const times = hotelDefaults.sessionTimes ?? [];
+    setSessions([...names]);
+    setSessionWeights(
+      weights.length === names.length
+        ? Object.fromEntries(
+            names.map((name, index) => [name, String(weights[index])]),
+          )
+        : {},
+    );
+    setStoredTimes(
+      times.length === names.length
+        ? Object.fromEntries(
+            names.map((name, index) => [name, times[index] ?? null]),
+          )
+        : {},
+    );
+  }, [hotelDefaults, isHotel, sessions.length]);
+  /* eslint-enable react-hooks/set-state-in-effect */
   const tripDefaulted = useRef(false);
   /* eslint-disable react-hooks/set-state-in-effect -- the trip axis follows the kind and the switch */
   useEffect(() => {
@@ -342,7 +430,8 @@ export function ServiceForm({
       setHasVariants(true);
     }
     if (ridePriced && hasVariants) {
-      if (!variantAxes.includes(tripAxis)) setVariantAxes((prev) => [tripAxis, ...prev]);
+      if (!variantAxes.includes(tripAxis))
+        setVariantAxes((prev) => [tripAxis, ...prev]);
     } else if (variantAxes.includes(tripAxis)) {
       setVariantAxes((prev) => prev.filter((axis) => axis !== tripAxis));
     }
@@ -519,7 +608,8 @@ export function ServiceForm({
           what the server does with such a service anyway.
         */
         setSessionWeights(
-          storedWeights.length > 0 && storedWeights.length === storedSessions.length
+          storedWeights.length > 0 &&
+            storedWeights.length === storedSessions.length
             ? Object.fromEntries(
                 storedSessions.map((session, index) => [
                   session,
@@ -533,7 +623,9 @@ export function ServiceForm({
         // field empty would make Simpan fail on a rule the user never set.
         // "Di toko" is what every service predating the field actually was.
         setServiceLocations(
-          result.serviceLocations?.length ? result.serviceLocations : ["in_store"],
+          result.serviceLocations?.length
+            ? result.serviceLocations
+            : ["in_store"],
         );
         setPickupDeliveryAvailable(result.pickupDeliveryAvailable ?? false);
         setAllBranches(result.allBranches ?? true);
@@ -543,6 +635,18 @@ export function ServiceForm({
         setCommissionable(result.commissionable ?? true);
         setSoldSeparately(result.soldSeparately ?? false);
         setAddonKinds(result.serviceKinds ?? []);
+        setRoomTypeIds(result.roomTypeIds ?? []);
+        setPetTypeIds(result.petTypeIds ?? []);
+        setStoredTimes(
+          (result.sessionTimes ?? []).length === storedSessions.length
+            ? Object.fromEntries(
+                storedSessions.map((session, index) => [
+                  session,
+                  result.sessionTimes?.[index] ?? null,
+                ]),
+              )
+            : {},
+        );
         setIsActive(result.isActive);
       })
       .catch((error) => {
@@ -587,9 +691,7 @@ export function ServiceForm({
   function toggleAxis(axis: VariantAxisKey, checked: boolean) {
     setVariantError(null);
     setVariantAxes((current) =>
-      checked
-        ? [...current, axis]
-        : current.filter((entry) => entry !== axis),
+      checked ? [...current, axis] : current.filter((entry) => entry !== axis),
     );
   }
 
@@ -621,6 +723,10 @@ export function ServiceForm({
     }
     if (serviceType === "main" && !serviceKind) {
       setKindError("Pilih kelompok layanannya dulu.");
+      invalid = true;
+    }
+    if (isHotel && petTypeIds.length === 0) {
+      setPetTypesError("Pilih minimal satu jenis hewan.");
       invalid = true;
     }
     // Required exactly when the server would require it: the account above has
@@ -665,7 +771,8 @@ export function ServiceForm({
         invalid = true;
       } else if (
         combos.some(
-          (combo) => !WHOLE_RUPIAH.test((variantPrices[combo.key] ?? "").trim()),
+          (combo) =>
+            !WHOLE_RUPIAH.test((variantPrices[combo.key] ?? "").trim()),
         )
       ) {
         setVariantError(
@@ -673,8 +780,10 @@ export function ServiceForm({
         );
         invalid = true;
       } else if (
+        !isHotel &&
         combos.some(
-          (combo) => durationProblem(variantDurations[combo.key] ?? "") === "empty",
+          (combo) =>
+            durationProblem(variantDurations[combo.key] ?? "") === "empty",
         )
       ) {
         setVariantError(
@@ -682,7 +791,10 @@ export function ServiceForm({
         );
         invalid = true;
       } else if (
-        combos.some((combo) => durationProblem(variantDurations[combo.key] ?? ""))
+        !isHotel &&
+        combos.some((combo) =>
+          durationProblem(variantDurations[combo.key] ?? ""),
+        )
       ) {
         setVariantError(
           `Durasi varian diisi menit antara 1 dan ${MAX_DURATION_MIN}.`,
@@ -697,7 +809,9 @@ export function ServiceForm({
           ...(combo.zoneId ? { zoneId: combo.zoneId } : {}),
           ...(combo.choices.length > 0 ? { choices: combo.choices } : {}),
           price: (variantPrices[combo.key] ?? "").trim(),
-          durationMin: Number((variantDurations[combo.key] ?? "").trim()),
+          durationMin: isHotel
+            ? null
+            : Number((variantDurations[combo.key] ?? "").trim()),
           isActive: variantActive[combo.key] !== false,
         }));
       }
@@ -719,7 +833,7 @@ export function ServiceForm({
         calendar is read as fact by everybody downstream. On a variant service
         each row carries its own, checked above.
       */
-      const problem = durationProblem(durationMin);
+      const problem = isHotel ? null : durationProblem(durationMin);
       if (problem === "empty") {
         setDurationError(
           "Wajib diisi — kalender dan pengecekan bentrok membacanya.",
@@ -730,12 +844,12 @@ export function ServiceForm({
           `Isi menit antara 1 dan ${MAX_DURATION_MIN}. Lebih dari sehari itu penitipan, dihitung per malam.`,
         );
         invalid = true;
-      } else {
+      } else if (!isHotel) {
         duration = Number(durationMin.trim());
       }
     }
 
-    if (serviceLocations.length === 0) {
+    if (!isHotel && serviceLocations.length === 0) {
       setLocationError("Pilih minimal satu lokasi layanan.");
       invalid = true;
     }
@@ -743,9 +857,7 @@ export function ServiceForm({
     // The same call the server makes: a service available at no branch at all
     // vanishes from every till while looking perfectly healthy on its own page.
     if (!allBranches && branchIds.length === 0) {
-      setBranchError(
-        "Pilih minimal satu cabang, atau centang “Semua cabang”.",
-      );
+      setBranchError("Pilih minimal satu cabang, atau centang “Semua cabang”.");
       invalid = true;
     }
 
@@ -759,6 +871,47 @@ export function ServiceForm({
 
     setSaving(true);
     setFormError(null);
+
+    /*
+      TAHAPAN TYPED HERE ARE ADDED TO THE LIST NOW, on save (24 November 2026) —
+      not when they were typed, so one typed and then removed leaves nothing
+      behind. One already there (somebody added it meanwhile) is fine.
+    */
+    const newSteps = sessions.filter((session) => !stepList.stepFor(session));
+    if (newSteps.length > 0) {
+      try {
+        for (const name of newSteps) {
+          try {
+            await serviceStepService.create({
+              name,
+              ...(serviceType === "main" && serviceKind ? { usedIn: [serviceKind] } : {}),
+            });
+          } catch (err) {
+            if (!(err instanceof ApiError && err.status === 409)) throw err;
+          }
+        }
+        invalidateServiceSteps();
+      } catch (err) {
+        setSaving(false);
+        swalToast(
+          err instanceof ApiError && err.status === 403
+            ? "Peran ini belum boleh menambah tahapan baru ke daftar."
+            : "Tahapan baru belum tersimpan ke daftar. Coba lagi.",
+          "error",
+          6000,
+        );
+        return;
+      }
+    }
+
+    /* A stored time wins (even a cleared one); otherwise the list's Jam default (hotel). */
+    const timeOf = (session: string) =>
+      /* A Jam default in words is no clock time — never stored (24 November 2026). */
+      fixedTimeText(stepList.stepFor(session)?.hotelTime)
+        ? null
+        : Object.hasOwn(storedTimes, session)
+          ? (storedTimes[session] ?? null)
+          : clockTimeOf(stepList.stepFor(session)?.hotelTime);
 
     const payload = {
       name: trimmedName,
@@ -795,7 +948,7 @@ export function ServiceForm({
       */
       ...(image || editing ? { image } : {}),
       description: description.trim() || null,
-      billingUnit,
+      billingUnit: isHotel ? "per_night" : billingUnit,
       /* An add-on belongs to no one kind; a main service to exactly one. */
       serviceKind: serviceType === "main" ? serviceKind || null : null,
       hasVariants,
@@ -813,12 +966,31 @@ export function ServiceForm({
       ...(hasVariants
         ? { variantAxes, variants }
         : // Sent exactly as typed. Never Number(price).
-          { price: trimmedPrice, durationMin: duration as number }),
+          {
+            price: trimmedPrice,
+            ...(isHotel ? {} : { durationMin: duration as number }),
+          }),
       sessions,
       // `[]` IS AN ANSWER — "split evenly" — and is sent as one.
       sessionWeights: sessionWeightsPayload(sessions, sessionWeights),
+      /*
+        A HOTEL service's clock times, realigned by NAME to the tahapan as they
+        stand now — they are edited on the service page; this form only keeps
+        each tahapan's own through a reorder.
+      */
+      ...(isHotel
+        ? {
+            sessionTimes: sessions.some((session) => timeOf(session))
+              ? sessions.map((session) => timeOf(session))
+              : [],
+            roomTypeIds,
+            petTypeIds,
+          }
+        : {}),
       included,
-      serviceLocations,
+      serviceLocations: isHotel
+        ? (["in_store"] as ServiceLocation[])
+        : serviceLocations,
       pickupDeliveryAvailable,
       allBranches,
       branchIds: allBranches ? [] : branchIds,
@@ -936,7 +1108,11 @@ export function ServiceForm({
         }
         meta={editing ? (service?.name ?? undefined) : undefined}
         submitLabel={
-          editing ? "Simpan layanan" : serviceType === "addon" ? "Buat add-on" : "Buat layanan"
+          editing
+            ? "Simpan layanan"
+            : serviceType === "addon"
+              ? "Buat add-on"
+              : "Buat layanan"
         }
         submitting={saving}
         disabled={variantBlock !== null}
@@ -947,6 +1123,7 @@ export function ServiceForm({
       {formError && <Alert variant="error">{formError}</Alert>}
 
       <Card
+        step={1}
         title="Identitas"
         description="Nama yang muncul di kasir dan di form booking, dan lini bisnis yang menentukan ke akun pendapatan mana penjualannya masuk."
       >
@@ -960,7 +1137,13 @@ export function ServiceForm({
               setNameError(null);
             }}
             error={nameError ?? undefined}
-            placeholder="mis. Grooming Full Service"
+            placeholder={
+              isHotel
+                ? "mis. Hotel Kucing"
+                : isRide
+                  ? "mis. Antar-Jemput Dalam Kota"
+                  : "mis. Grooming Full Service"
+            }
             maxLength={NAME_MAX_LENGTH}
             autoFocus
             disabled={saving}
@@ -976,7 +1159,13 @@ export function ServiceForm({
               setCodeError(null);
             }}
             error={codeError ?? undefined}
-            placeholder="mis. GRM-FULL"
+            placeholder={
+              isHotel
+                ? "mis. HTL-0001"
+                : isRide
+                  ? "mis. AJ-0001"
+                  : "mis. GRM-FULL"
+            }
             maxLength={CODE_MAX_LENGTH}
             hint="Untuk input cepat di kasir. Tanpa spasi, dan harus unik."
             disabled={saving}
@@ -1064,8 +1253,145 @@ export function ServiceForm({
       </Card>
 
       <Card
-        title="Harga & durasi"
-        description="Harga dan durasi bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
+        step={2}
+        title="Lokasi & jangkauan"
+        description={
+          isHotel
+            ? "Di mana layanan ini dikerjakan dan di cabang mana bisa dipesan. Saat booking, layanan ini hanya muncul untuk jenis hewan dan tipe kamar yang dicentang."
+            : "Di mana layanan ini dikerjakan, dan di cabang mana bisa dipesan."
+        }
+      >
+        <div className="flex flex-col gap-5">
+          {isHotel && (
+            <div>
+              <p className="text-sm font-medium">Jenis hewan</p>
+              {/* Chips, like the variant options (24 November 2026, on request). */}
+              <div className="mt-2 flex flex-wrap gap-2">
+                {speciesOptions.map((option) => (
+                  <label
+                    key={option._id}
+                    className={cn(
+                      "flex min-h-9 cursor-pointer items-center gap-2 rounded-full border px-3 py-1 text-sm font-semibold transition",
+                      "has-[:focus-visible]:border-primary has-[:focus-visible]:ring-[3px] has-[:focus-visible]:ring-ring/50",
+                      petTypeIds.includes(option._id)
+                        ? "border-primary bg-tint-info text-foreground"
+                        : "border-border bg-surface text-foreground hover:bg-surface-hover",
+                      saving && "cursor-not-allowed opacity-60",
+                    )}
+                  >
+                    <Checkbox
+                      checked={petTypeIds.includes(option._id)}
+                      onCheckedChange={(checked) => {
+                        const next =
+                          checked === true
+                            ? [...petTypeIds, option._id]
+                            : petTypeIds.filter((id) => id !== option._id);
+                        setPetTypeIds(next);
+                        /* A room type for none of them is dropped (24 November 2026). */
+                        setRoomTypeIds((current) =>
+                          current.filter((id) => {
+                            const roomType = hotelRoomTypes.items.find((one) => one._id === id);
+                            return !roomType || roomTypeFits(roomType, next);
+                          }),
+                        );
+                        setPetTypesError(null);
+                      }}
+                      disabled={saving}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+              {petTypesError && (
+                <p
+                  role="alert"
+                  className="mt-1 text-xs font-semibold text-danger"
+                >
+                  {petTypesError}
+                </p>
+              )}
+            </div>
+          )}
+          {isHotel ? (
+            <HotelRoomTypesField
+              petTypeIds={petTypeIds}
+              value={roomTypeIds}
+              onChange={setRoomTypeIds}
+              branches={branches}
+              disabled={saving}
+            />
+          ) : (
+            <div>
+              <p className="text-sm font-medium">Lokasi layanan</p>
+              <p className="mt-1 text-xs text-muted">
+                Boleh dua-duanya — grooming panggilan yang juga melayani di
+                toko.
+              </p>
+              <CheckRowGroup className="mt-2">
+                {SERVICE_LOCATION_ORDER.map((location) => (
+                  <CheckRow
+                    key={location}
+                    label={LOCATION_LABELS[location]}
+                    checked={serviceLocations.includes(location)}
+                    onCheckedChange={(checked) =>
+                      toggleLocation(location, checked)
+                    }
+                    disabled={saving}
+                  />
+                ))}
+              </CheckRowGroup>
+              {locationError && (
+                <p role="alert" className="mt-1 text-xs text-danger">
+                  {locationError}
+                </p>
+              )}
+            </div>
+          )}
+
+          <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
+            <div className="min-w-0">
+              <Label htmlFor="service-pickup-delivery">Bisa antar-jemput</Label>
+              <p className="mt-1 max-w-prose text-xs text-muted">
+                Nyalakan kalau hewannya boleh dijemput dan diantar pulang.
+              </p>
+            </div>
+            <Switch
+              id="service-pickup-delivery"
+              checked={pickupDeliveryAvailable}
+              onCheckedChange={setPickupDeliveryAvailable}
+              disabled={saving}
+            />
+          </div>
+
+          <div className="border-t border-border pt-4">
+            <ServiceBranchScope
+              branches={branches}
+              loading={branchesLoading}
+              loadError={branchesError}
+              allBranches={allBranches}
+              branchIds={branchIds}
+              error={branchError ?? undefined}
+              disabled={saving}
+              onChange={(patch) => {
+                setBranchError(null);
+                if (patch.allBranches !== undefined)
+                  setAllBranches(patch.allBranches);
+                if (patch.branchIds !== undefined)
+                  setBranchIds(patch.branchIds);
+              }}
+            />
+          </div>
+        </div>
+      </Card>
+
+      <Card
+        step={3}
+        title={isHotel ? "Harga per malam" : "Harga & durasi"}
+        description={
+          isHotel
+            ? undefined
+            : "Harga dan durasi bisa satu untuk semua, atau beda-beda per varian. Durasi dibaca kalender dan pengecekan bentrok."
+        }
       >
         <div className="flex flex-col gap-5">
           {/*
@@ -1075,17 +1401,25 @@ export function ServiceForm({
             however many animals ride), so the hint no longer says it is
             stored-only (27 October 2026).
           */}
-          <SelectField
-            label="Ditagih"
-            value={billingUnit}
-            onChange={(next) => setBillingUnit(next as ServiceBillingUnit)}
-            options={BILLING_UNIT_OPTIONS}
-            hint="Per kunjungan: hewan yang datang bareng cuma bayar sekali, mis. antar-jemput. Per hewan: tiap hewan ditagih sendiri."
-            disabled={saving}
-            required
-          />
+          {isHotel ? null : (
+            <SelectField
+              label="Ditagih"
+              value={billingUnit}
+              onChange={(next) => setBillingUnit(next as ServiceBillingUnit)}
+              options={BILLING_UNIT_OPTIONS}
+              hint="Per kunjungan: hewan yang datang bareng cuma bayar sekali, mis. antar-jemput. Per hewan: tiap hewan ditagih sendiri."
+              disabled={saving}
+              required
+            />
+          )}
 
-          <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
+          <div
+            className={cn(
+              "flex items-start justify-between gap-4",
+              /* Hotel has nothing above it to divide from (24 November 2026). */
+              !isHotel && "border-t border-border pt-4",
+            )}
+          >
             <div className="min-w-0">
               <Label htmlFor="service-has-variants">
                 Harga beda per varian
@@ -1093,7 +1427,9 @@ export function ServiceForm({
               <p className="mt-1 max-w-prose text-xs text-muted">
                 {ridePriced
                   ? "Nyalakan untuk harga Antar / Jemput (sekali jalan) dan Antar + Jemput (paket pulang-pergi, dibagi rata ke booking jemput dan antar) — bisa juga dibedakan per zona. Kalau mati, satu harga berlaku untuk tiap perjalanan."
-                  : "Nyalakan kalau harga dan durasinya tergantung hewannya — tipe, ukuran, atau jenis bulu. Kalau mati, satu harga dan satu durasi berlaku untuk semua."}
+                  : isHotel
+                    ? "Nyalakan kalau harganya beda per hewan atau tipe kamar."
+                    : "Nyalakan kalau harga dan durasinya beda per hewan."}
               </p>
             </div>
             <Switch
@@ -1123,6 +1459,7 @@ export function ServiceForm({
                 variantAxes,
               )}
               kindName={serviceKind ? SERVICE_KIND_LABELS[serviceKind] : null}
+              untimed={isHotel}
               onReloadOptions={invalidateVariantOptions}
               prices={variantPrices}
               durations={variantDurations}
@@ -1138,7 +1475,10 @@ export function ServiceForm({
               }}
               onDurationChange={(key, value) => {
                 setVariantError(null);
-                setVariantDurations((current) => ({ ...current, [key]: value }));
+                setVariantDurations((current) => ({
+                  ...current,
+                  [key]: value,
+                }));
               }}
               onActiveChange={(key, next) =>
                 setVariantActive((current) => ({ ...current, [key]: next }))
@@ -1147,7 +1487,7 @@ export function ServiceForm({
           ) : (
             <div className="grid gap-4 sm:grid-cols-2">
               <TextField
-                label="Harga"
+                label={isHotel ? "Harga per malam" : "Harga"}
                 name="price"
                 // `inputMode` rather than type=number: a number input in some
                 // browsers silently reformats and loses what was typed, and this
@@ -1160,68 +1500,114 @@ export function ServiceForm({
                 }}
                 error={priceError ?? undefined}
                 placeholder="150000"
-                hint="Boleh 0 — layanan gratis itu hal yang nyata."
                 disabled={saving}
                 required
               />
-              <TextField
-                label="Durasi (menit)"
-                name="durationMin"
-                type="number"
-                min={1}
-                max={MAX_DURATION_MIN}
-                value={durationMin}
-                onChange={(event) => {
-                  setDurationMin(event.target.value);
-                  setDurationError(null);
-                }}
-                error={durationError ?? undefined}
-                placeholder="90"
-                hint="Dipakai kalender dan pengecekan bentrok."
-                disabled={saving}
-                required
-              />
+              {!isHotel && (
+                <TextField
+                  label="Durasi (menit)"
+                  name="durationMin"
+                  type="number"
+                  min={1}
+                  max={MAX_DURATION_MIN}
+                  value={durationMin}
+                  onChange={(event) => {
+                    setDurationMin(event.target.value);
+                    setDurationError(null);
+                  }}
+                  error={durationError ?? undefined}
+                  placeholder="90"
+                  hint="Dipakai kalender dan pengecekan bentrok."
+                  disabled={saving}
+                  required
+                />
+              )}
             </div>
           )}
         </div>
       </Card>
 
       <Card
+        step={4}
         title="Isi layanan"
         description="Tahapan dipakai kalender untuk memecah pengerjaannya, dan bobotnya menentukan bagian komisi tiap tahapan. Termasuk dipakai etalase untuk menyebut apa saja yang didapat pelanggan."
       >
         <div className="flex flex-col gap-6">
           <div className="flex flex-col gap-4">
-            <ServiceStepsField
-              sessions={sessions}
-              // The server keeps what this service stored, retired or not.
-              kept={service?.sessions ?? []}
-              maxItems={MAX_SESSIONS}
-              mayAddToList={mayAddSteps}
-              error={sessionsError ?? undefined}
-              disabled={saving}
-              onChange={(update) => {
-                setSessions(update);
-                setWeightError(null);
-                setSessionsError(null);
-              }}
-            />
+            {isHotel ? (
+              /* One table on a hotel service (24 November 2026, on request). */
+              <ServiceStepsWeightsTable
+                sessions={sessions}
+                kept={service?.sessions ?? []}
+                kinds={serviceKind ? [serviceKind] : []}
+                maxItems={MAX_SESSIONS}
+                mayAddToList={mayAddSteps}
+                weights={sessionWeights}
+                times={Object.fromEntries(
+                  sessions.map((session) => [
+                    session,
+                    (Object.hasOwn(storedTimes, session)
+                      ? storedTimes[session]
+                      : clockTimeOf(stepList.stepFor(session)?.hotelTime)) ?? "",
+                  ]),
+                )}
+                onTimeChange={(name, time) =>
+                  setStoredTimes((current) => ({ ...current, [name]: time || null }))
+                }
+                stepsError={sessionsError ?? undefined}
+                weightsError={weightError ?? undefined}
+                disabled={saving}
+                onStepsChange={(update) => {
+                  setSessions(update);
+                  setWeightError(null);
+                  setSessionsError(null);
+                }}
+                onWeightsChange={(next) => {
+                  setSessionWeights(next);
+                  setWeightError(null);
+                }}
+              />
+            ) : (
+              <>
+              <ServiceStepsField
+                sessions={sessions}
+                // The server keeps what this service stored, retired or not.
+                kept={service?.sessions ?? []}
+                kinds={
+                  serviceType === "main"
+                    ? serviceKind
+                      ? [serviceKind]
+                      : []
+                    : addonKinds
+                }
+                maxItems={MAX_SESSIONS}
+                mayAddToList={mayAddSteps}
+                error={sessionsError ?? undefined}
+                disabled={saving}
+                onChange={(update) => {
+                  setSessions(update);
+                  setWeightError(null);
+                  setSessionsError(null);
+                }}
+              />
 
-            {/*
-              UNDER THE LIST IT SPLITS. Commission is one rule for the whole shop
-              (Layanan › Grooming › Pengaturan); how a service's share is divided
-              between its tahapan is this service's business.
-            */}
-            <SessionWeightsEditor
-              sessions={sessions}
-              weights={sessionWeights}
-              error={weightError ?? undefined}
-              disabled={saving}
-              onChange={(next) => {
-                setSessionWeights(next);
-                setWeightError(null);
-              }}
-            />
+              {/*
+                UNDER THE LIST IT SPLITS. Commission is one rule for the whole shop
+                (Layanan › Grooming › Pengaturan); how a service's share is divided
+                between its tahapan is this service's business.
+              */}
+              <SessionWeightsEditor
+                sessions={sessions}
+                weights={sessionWeights}
+                error={weightError ?? undefined}
+                disabled={saving}
+                onChange={(next) => {
+                  setSessionWeights(next);
+                  setWeightError(null);
+                }}
+              />
+              </>
+            )}
           </div>
 
           <div className="border-t border-border pt-6">
@@ -1239,81 +1625,17 @@ export function ServiceForm({
         </div>
       </Card>
 
-      <Card
-        title="Lokasi & jangkauan"
-        description="Di mana layanan ini dikerjakan, dan di cabang mana bisa dipesan."
-      >
-        <div className="flex flex-col gap-5">
-          <div>
-            <p className="text-sm font-medium">Lokasi layanan</p>
-            <p className="mt-1 text-xs text-muted">
-              Boleh dua-duanya — grooming panggilan yang juga melayani di toko.
-            </p>
-            <CheckRowGroup className="mt-2">
-              {SERVICE_LOCATION_ORDER.map((location) => (
-                <CheckRow
-                  key={location}
-                  label={LOCATION_LABELS[location]}
-                  checked={serviceLocations.includes(location)}
-                  onCheckedChange={(checked) =>
-                    toggleLocation(location, checked)
-                  }
-                  disabled={saving}
-                />
-              ))}
-            </CheckRowGroup>
-            {locationError && (
-              <p role="alert" className="mt-1 text-xs text-danger">
-                {locationError}
-              </p>
-            )}
-          </div>
-
-          <div className="flex items-start justify-between gap-4 border-t border-border pt-4">
-            <div className="min-w-0">
-              <Label htmlFor="service-pickup-delivery">
-                Bisa antar-jemput
-              </Label>
-              <p className="mt-1 max-w-prose text-xs text-muted">
-                Nyalakan kalau hewannya boleh dijemput dan diantar pulang.
-              </p>
-            </div>
-            <Switch
-              id="service-pickup-delivery"
-              checked={pickupDeliveryAvailable}
-              onCheckedChange={setPickupDeliveryAvailable}
-              disabled={saving}
-            />
-          </div>
-
-          <div className="border-t border-border pt-4">
-            <ServiceBranchScope
-              branches={branches}
-              loading={branchesLoading}
-              loadError={branchesError}
-              allBranches={allBranches}
-              branchIds={branchIds}
-              error={branchError ?? undefined}
-              disabled={saving}
-              onChange={(patch) => {
-                setBranchError(null);
-                if (patch.allBranches !== undefined)
-                  setAllBranches(patch.allBranches);
-                if (patch.branchIds !== undefined) setBranchIds(patch.branchIds);
-              }}
-            />
-          </div>
-        </div>
-      </Card>
-
       {/*
         ONLY ON A MAIN SERVICE. An add-on may not carry add-ons of its own — the
         server empties the list rather than refusing the save — so the card is
         absent rather than shown disabled, which would offer a choice that has
         no effect.
       */}
+      {/* Add-on (main) and Pengaturan add-on (add-on) never show together, so
+          both are 5; Ketersediaan, on an edit only, is last. */}
       {serviceType === "main" && (
         <Card
+          step={5}
           title="Add-on"
           description="Layanan tambahan yang bisa dicentang bareng layanan ini di kasir."
         >
@@ -1335,6 +1657,7 @@ export function ServiceForm({
             loadError={addonsError}
             selected={addonServiceIds}
             disabled={saving}
+            perUnit={isHotel}
             onChange={setAddonServiceIds}
           />
         </Card>
@@ -1346,6 +1669,7 @@ export function ServiceForm({
       */}
       {serviceType === "addon" && (
         <Card
+          step={5}
           title="Pengaturan add-on"
           description="Berlaku untuk add-on ini saja. Nilai komisinya diatur sekali di setiap modul layanan."
         >
@@ -1394,6 +1718,7 @@ export function ServiceForm({
       )}
 
       <Card
+        step={6}
         title="Pajak"
         description="Tarif PPN-nya diatur sekali di Pengaturan, bukan per layanan. Yang diatur di sini cuma apakah layanan ini kena atau tidak."
       >
@@ -1415,6 +1740,7 @@ export function ServiceForm({
       </Card>
 
       <Card
+        step={7}
         title="Keterangan"
         description="Opsional. Sebaris dua baris soal layanan ini — daftar isinya sendiri diisi di Termasuk."
       >
@@ -1431,6 +1757,7 @@ export function ServiceForm({
 
       {editing && (
         <Card
+          step={8}
           title="Ketersediaan"
           description="Layanan nonaktif tidak hilang — cuma berhenti ditawarkan di kasir."
         >

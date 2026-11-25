@@ -416,19 +416,16 @@ describe("GroomingServiceDetailScreen", () => {
 
     await userEvent.click(screen.getByLabelText("Pilih Kecil"));
     await userEvent.click(screen.getByLabelText("Pilih Sedang"));
-    expect(screen.getByText("2 dipilih")).toBeInTheDocument();
+    expect(screen.getByText("2 varian dipilih")).toBeInTheDocument();
 
-    await userEvent.click(screen.getByRole("button", { name: "+ %" }));
-    await userEvent.type(
-      screen.getByLabelText("Naik berapa persen (boleh minus)"),
-      "10",
-    );
-    await userEvent.click(screen.getByRole("button", { name: "Terapkan" }));
-
-    // Rounded to the nearest thousand, as a shop prices.
-    expect(screen.getByLabelText("Harga Kecil")).toHaveValue("98.000");
-    expect(screen.getByLabelText("Harga Sedang")).toHaveValue("142.000");
-    expect(screen.queryByText("2 dipilih")).not.toBeInTheDocument();
+    // "Samakan harga" gives every ticked row the one price.
+    await userEvent.type(screen.getByLabelText("Ubah harga varian yang dicentang"), "150000");
+    await userEvent.click(screen.getByRole("button", { name: "Samakan harga" }));
+    expect(screen.getByLabelText("Harga Kecil")).toHaveValue("150.000");
+    expect(screen.getByLabelText("Harga Sedang")).toHaveValue("150.000");
+    // The box empties and the ticks clear, ready for the next change.
+    expect(screen.getByLabelText("Ubah harga varian yang dicentang")).toHaveValue("");
+    expect(screen.queryByText("2 varian dipilih")).not.toBeInTheDocument();
   });
 
   it("splits rows when an option is ticked, each starting from the row it came from", async () => {
@@ -667,7 +664,7 @@ describe("GroomingServiceDetailScreen", () => {
     );
 
     await waitFor(() =>
-      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "potong kuku" }),
+      expect(serviceStepService.create).toHaveBeenCalledWith({ name: "potong kuku", usedIn: ["grooming"] }),
     );
     expect(
       await screen.findByLabelText("Bobot Potong kuku (%)"),

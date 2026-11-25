@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import Link from "next/link";
-import { AlertTriangle, Calculator, Coins, PawPrint, UserRound } from "lucide-react";
+import { AlertTriangle, BedDouble, Calculator, Coins, PawPrint, UserRound } from "lucide-react";
 
 import { ActionGroup, Alert, StatTile } from "@/components";
 import {
@@ -24,6 +24,9 @@ import { usePermissions } from "@/features/permissions";
 import { SETTINGS_PATHS } from "@/features/settings";
 import { customerInvoiceService } from "@/services/customerInvoice.service";
 import { customerService } from "@/services/customer.service";
+import { hotelStayService } from "@/services/hotel.service";
+import { hotelBookingPath } from "@/features/hotel/paths";
+import { roomText, stayFlag } from "@/features/hotel/stay";
 import { membershipService } from "@/services/membership.service";
 import { posService } from "@/services/pos.service";
 import { formatMoney } from "@/utils/decimal";
@@ -66,7 +69,7 @@ function daysSince(iso: string, today: string): number {
  */
 export function BerandaHariIni() {
   const { today, branchIds } = useBerandaScope();
-  const { can } = usePermissions();
+  const { can, isModuleOn } = usePermissions();
   const branchKey = branchIds.join(",");
 
   const readsBookings = can("bookings", "read");
@@ -184,6 +187,29 @@ export function BerandaHariIni() {
       }),
     readsInvoices,
   );
+
+  /* THE HOTEL'S DAY (21 November 2026): who arrives, who goes home, and who
+     sleeps tonight with no PIC — the night's commission waits on one. */
+  const readsHotel = readsBookings && isModuleOn("layanan");
+  const hotel = useRemote(
+    `hotel|${branchKey}|${today}`,
+    () =>
+      hotelStayService.list({
+        to: today,
+        branchIds: branchIds.length ? branchIds : undefined,
+        statuses: ["confirmed", "in_progress"],
+      }),
+    readsHotel,
+  );
+  const hotelToDo = (hotel.data?.items ?? [])
+    .map((booking) => {
+      const flag = stayFlag(booking, hotel.data?.today ?? today);
+      const noPic =
+        booking.status === "in_progress" &&
+        !booking.stay.days.find((day) => day.date === (hotel.data?.today ?? today))?.picUserId;
+      return { booking, why: flag ?? (noPic ? "Belum ada PIC malam ini" : null) };
+    })
+    .filter((row) => row.why);
 
   const dormant = useRemote(
     `dormant|${today}`,
@@ -308,6 +334,33 @@ export function BerandaHariIni() {
                       label: `+${unassigned.length - ROWS} booking lagi`,
                       href: "/dashboard/booking",
                     }
+                  : undefined
+              }
+            />
+          )}
+
+          {readsHotel && (hotel.loading || hotel.failed || hotelToDo.length > 0) && (
+            <ActionGroup
+              icon={BedDouble}
+              tone="warn"
+              title="Hotel hari ini"
+              count={hotel.data ? hotelToDo.length : null}
+              loading={hotel.loading}
+              failed={hotel.failed}
+              empty="Tidak ada yang perlu diurus di hotel hari ini."
+              rows={hotelToDo.slice(0, ROWS).map(({ booking, why }) => ({
+                key: booking._id,
+                title: (
+                  <>
+                    {booking.petName} — {why}
+                  </>
+                ),
+                detail: `${booking.customerName ?? ""} · ${roomText(booking.stay)}`,
+                action: { label: "Buka", href: hotelBookingPath(booking._id) },
+              }))}
+              more={
+                hotelToDo.length > ROWS
+                  ? { label: `+${hotelToDo.length - ROWS} lagi`, href: "/dashboard/service/hotel" }
                   : undefined
               }
             />

@@ -84,6 +84,12 @@ export interface VariantAxisValue {
   speciesId?: string | null;
   /** That animal's word, for naming the size where the animal is not a column. */
   speciesLabel?: string | null;
+  /**
+   * THE ANIMALS A ROOM TYPE TAKES (24 November 2026) — on the "Tipe kamar"
+   * card's values only. With Jenis hewan also an axis, a room is paired only
+   * with those animals: no "Kucing · Zona Bermain Anjing" row.
+   */
+  speciesIds?: readonly string[] | null;
 }
 
 /**
@@ -108,7 +114,7 @@ export interface VariantAxisDef {
   /** The kinds of service the card is for — empty is every kind. */
   serviceKinds: ServiceKind[];
   /** "trip" on the system card "Perjalanan" (16 November 2026). */
-  systemKey?: "trip" | null;
+  systemKey?: "trip" | "roomType" | null;
 }
 
 const RETIRED_SUFFIX = " (nonaktif)";
@@ -404,7 +410,9 @@ export function buildVariantCombos(
       (table[axis] ?? [])
         .filter(
           (entry) =>
-            axis !== "sizeCategory" || sizeFitsAnimal(entry, row.petType),
+            (axis !== "sizeCategory" || sizeFitsAnimal(entry, row.petType)) &&
+            /* A room type only with the animals it takes (24 November 2026). */
+            (!entry.speciesIds?.length || row.petType === null || entry.speciesIds.includes(row.petType)),
         )
         .map((entry) => {
           const word =
@@ -479,4 +487,51 @@ export function comboKey(
         `${variantValueOn(variant as Partial<ServiceVariant>, axis) ?? ""}|`,
     )
     .join("");
+}
+
+/**
+ * A HOTEL SERVICE'S GRID FOLLOWS ITS "LOKASI & JANGKAUAN" (24 November 2026, on
+ * request). The rows offered are only the animals the service takes and only
+ * the room types it is for:
+ *
+ * - Jenis hewan: the `petType` values are narrowed to `petTypeIds`; a size filed
+ *   under an animal the service does not take goes too (a size for every animal
+ *   stays).
+ * - Tipe kamar: the system card "Tipe kamar" (`systemKey: "roomType"`) carries
+ *   the shop's room types, code = the room type's id — narrowed to `roomTypeIds`.
+ *
+ * An empty pick narrows nothing — "not answered yet" is not "none".
+ */
+export function scopeHotelAxisValues(
+  table: VariantAxisValues,
+  scope: {
+    petTypeIds: readonly string[];
+    roomTypeIds: readonly string[];
+    /** The "Tipe kamar" card's axis key, when the tenant has one. */
+    roomTypeAxis: string | null;
+    /** The shop's room types — which animals each takes. */
+    roomTypes?: readonly { _id: string; petTypeIds: readonly string[] }[];
+  },
+): VariantAxisValues {
+  const pets = new Set(scope.petTypeIds);
+  const rooms = new Set(scope.roomTypeIds);
+
+  const out: VariantAxisValues = {};
+  for (const [axis, values] of Object.entries(table)) {
+    if (axis === "petType" && pets.size > 0) {
+      out[axis] = values.filter((entry) => pets.has(entry.value));
+    } else if (axis === "sizeCategory" && pets.size > 0) {
+      out[axis] = values.filter((entry) => !entry.speciesId || pets.has(entry.speciesId));
+    } else if (axis === scope.roomTypeAxis) {
+      out[axis] = values
+        .filter((entry) => rooms.size === 0 || rooms.has(entry.value))
+        .map((entry) => ({
+          ...entry,
+          speciesIds: scope.roomTypes?.find((room) => room._id === entry.value)?.petTypeIds ?? null,
+        }));
+    } else {
+      out[axis] = values;
+    }
+  }
+  return out;
 }

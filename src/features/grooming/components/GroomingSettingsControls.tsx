@@ -34,12 +34,15 @@ export function ChoiceCards<T extends string>({
   options,
   onChange,
   disabled = false,
+  columns = 2,
 }: {
   legend: string;
   value: T;
   options: ChoiceOption<T>[];
   onChange: (next: T) => void;
   disabled?: boolean;
+  /** 3 puts three options on one row from a tablet up. */
+  columns?: 2 | 3;
 }) {
   const id = useId();
 
@@ -53,7 +56,10 @@ export function ChoiceCards<T extends string>({
         value={value}
         onValueChange={(next) => onChange(next as T)}
         disabled={disabled}
-        className="grid gap-3 sm:grid-cols-2"
+        className={cn(
+          "grid gap-3",
+          columns === 3 ? "md:grid-cols-3" : "sm:grid-cols-2",
+        )}
       >
         {options.map((option) => {
           const selected = option.value === value;
@@ -144,7 +150,9 @@ export function UnitField({
           {prefix && <span className="text-sm text-muted">{prefix}</span>}
           <Input
             {...field}
-            aria-describedby={field["aria-describedby"] ?? (invalid ? describedBy : undefined)}
+            aria-describedby={
+              field["aria-describedby"] ?? (invalid ? describedBy : undefined)
+            }
             value={value}
             onChange={(event) => onChange(event.target.value)}
             inputMode={inputMode}
