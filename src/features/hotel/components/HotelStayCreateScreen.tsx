@@ -409,7 +409,15 @@ export function HotelStayCreateScreen() {
                         {pet.name}
                       </span>
                       <span className="block text-xs text-muted">
-                        {[pet.speciesLabel, pet.sizeLabel]
+                        {[
+                          pet.speciesLabel,
+                          pet.breedLabel,
+                          pet.sizeLabel
+                            ? pet.weightKg
+                              ? `${pet.sizeLabel} (${String(pet.weightKg).replace(".", ",")} kg)`
+                              : pet.sizeLabel
+                            : null,
+                        ]
                           .filter(Boolean)
                           .join(" · ") || "—"}
                       </span>

@@ -23,13 +23,14 @@ import type {
   Pet,
   Service,
 } from "@/types/api";
-import { formatMoney } from "@/utils/decimal";
+import { formatMoney, toDecimalString, toMinor } from "@/utils/decimal";
 import { priceForPet } from "@/utils/serviceVariant";
 
-import { addDays, shortDate } from "../stay";
+import { addDays, addonCount, shortDate } from "../stay";
 import {
   addonFromService,
   digits,
+  previewBill,
   type DiscountDraft,
   type PetDraft,
   withRoomChoice,
@@ -119,6 +120,8 @@ export function StayPetFields({
     ? priceForPet(service, pet, { choices }).price
     : null;
   const change = (patch: Partial<PetDraft>) => onChange({ ...draft, ...patch });
+  const bill = previewBill(draft, dates, { serviceName: service?.name ?? "", catalogPrice: catalog });
+  const subtotal = toDecimalString(bill.lines.reduce((sum, line) => sum + (toMinor(line.net) ?? 0n), 0n));
   const dateOk = dates.checkOutDate > dates.checkInDate;
 
   /* The first service, room type and free unit, once there is something to pick. */
@@ -282,223 +285,194 @@ export function StayPetFields({
         />
       )}
 
-      <div className="grid gap-4 md:grid-cols-3">
-        <TextField
-          label="Harga per malam"
-          name="nightPrice"
-          inputMode="numeric"
-          value={
-            draft.nightPrice
-              ? Number(draft.nightPrice).toLocaleString("id-ID")
-              : ""
-          }
-          placeholder={
-            catalog ? Number(catalog).toLocaleString("id-ID") : "Isi harga"
-          }
-          onChange={(event) =>
-            change({ nightPrice: digits(event.target.value) })
-          }
-          disabled={!mayPrice}
-          hint={
-            catalog
-              ? draft.nightPrice && Number(draft.nightPrice) !== Number(catalog)
-                ? `Harga daftar ${formatMoney(catalog)} — diubah`
-                : `Harga daftar ${formatMoney(catalog)}`
-              : "Varian ini belum punya harga di Layanan & Harga — isi manual."
-          }
-        />
-        <DiscountField
-          label="Diskon menginap"
-          value={draft.discount}
-          onChange={(discount) => change({ discount })}
-          disabled={!mayPrice}
-        />
-        <DiscountField
-          label="Diskon keseluruhan"
-          value={draft.bookingDiscount}
-          onChange={(bookingDiscount) => change({ bookingDiscount })}
-          disabled={!mayPrice}
-        />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label>Add-on</Label>
-        {draft.addons.length === 0 && (
-          <p className="text-sm text-muted">Belum ada add-on.</p>
-        )}
-        {draft.addons.map((addon, index) => (
-          <div
-            key={addon.key}
-            className={cn(
-              "flex flex-wrap items-end gap-2 rounded-xl border border-border p-3",
-              addon.billed && "bg-surface-hover",
-            )}
-          >
-            <div className="min-w-40 flex-1">
-              <p className="text-sm font-semibold">{addon.name}</p>
-              <p className="text-xs text-muted">
-                {addon.unit === "night"
-                  ? "per malam, sampai check-out"
-                  : "per kali"}
-                {addon.billed && " · sudah ditagih, dikunci"}
-              </p>
+      {/* ONE TABLE for the stay and its add-ons (24 November 2026, on request). */}
+      <div className="flex flex-col gap-3">
+        <p className="text-sm font-bold">Harga, diskon &amp; add-on</p>
+        <div className="overflow-x-auto rounded-xl border border-border">
+          <div className="min-w-[860px]">
+            <div className={cn(BILL_COLS, "border-b border-border bg-background px-4 py-2.5 text-sm font-semibold text-muted")}>
+              <span>Item</span>
+              <span>Jadwal</span>
+              <span>Jumlah</span>
+              <span>Harga</span>
+              <span>Diskon</span>
+              <span>
+                <span className="sr-only">Hapus</span>
+              </span>
             </div>
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              {addon.unit === "night" ? "Mulai" : "Tanggal"}
-              <Select
-                value={addon.date}
-                disabled={addon.billed}
-                onValueChange={(date) =>
-                  date &&
-                  change({
-                    addons: draft.addons.map((row, at) =>
-                      at === index ? { ...row, date } : row,
-                    ),
-                  })
-                }
-              >
-                <SelectTrigger
-                  aria-label={`Tanggal ${addon.name}`}
-                  className="h-9 w-28"
+
+            <div className={cn(BILL_COLS, "border-b border-border px-4 py-3 last:border-b-0")}>
+              <span>
+                <span className="block text-sm font-bold">{service?.name ?? "Menginap"}</span>
+                <span className="block text-xs text-muted">
+                  per malam
+                  {catalog && draft.nightPrice && Number(draft.nightPrice) !== Number(catalog)
+                    ? ` · harga daftar ${formatMoney(catalog)}`
+                    : ""}
+                </span>
+              </span>
+              <span className="text-sm tabular-nums">
+                {dateOk ? `${shortDate(dates.checkInDate)} – ${shortDate(dates.checkOutDate)}` : "—"}
+              </span>
+              <span className="text-sm tabular-nums">{bill.nights} malam</span>
+              <MoneyCell
+                label="Harga per malam"
+                value={draft.nightPrice}
+                placeholder={catalog ? Number(catalog).toLocaleString("id-ID") : "Isi harga"}
+                disabled={!mayPrice}
+                onChange={(nightPrice) => change({ nightPrice })}
+              />
+              <DiscountCell
+                label="Diskon menginap"
+                value={draft.discount}
+                disabled={!mayPrice}
+                onChange={(discount) => change({ discount })}
+              />
+              <span />
+            </div>
+
+            {draft.addons.map((addon, index) => {
+              const set = (patch: Partial<typeof addon>) =>
+                change({ addons: draft.addons.map((row, at) => (at === index ? { ...row, ...patch } : row)) });
+              const count = addonCount(
+                { unit: addon.unit, qty: Number(addon.qty) || 1, date: addon.date },
+                { ...dates, leftDate: null },
+              );
+              return (
+                <div
+                  key={addon.key}
+                  className={cn(BILL_COLS, "border-b border-border px-4 py-3 last:border-b-0", addon.billed && "bg-surface-hover")}
                 >
-                  <SelectValue />
+                  <span>
+                    <span className="block text-sm font-bold">{addon.name}</span>
+                    <span className="block text-xs text-muted">
+                      {addon.unit === "night" ? "per malam" : "per kali"}
+                      {addon.billed && " · sudah ditagih"}
+                    </span>
+                  </span>
+                  <span className="flex flex-wrap items-center gap-2">
+                    <Select value={addon.date} disabled={addon.billed} onValueChange={(date) => date && set({ date })}>
+                      <SelectTrigger aria-label={`Tanggal ${addon.name}`} className="h-9 w-28">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(addon.unit === "night" ? days.slice(0, -1) : days).map((date) => (
+                          <SelectItem key={date} value={date}>
+                            {shortDate(date)}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {(addon.unit === "time" || addon.commissionable) && (
+                      <Input
+                        type="time"
+                        aria-label={`Jam ${addon.name}`}
+                        value={addon.time}
+                        disabled={addon.billed}
+                        onChange={(event) => set({ time: event.target.value })}
+                        className="h-9 w-28 tabular-nums"
+                      />
+                    )}
+                  </span>
+                  {addon.unit === "time" ? (
+                    <span className="flex items-center gap-1.5">
+                      <Input
+                        inputMode="numeric"
+                        aria-label={`Jumlah ${addon.name}`}
+                        value={addon.qty}
+                        disabled={addon.billed}
+                        onChange={(event) => set({ qty: digits(event.target.value) })}
+                        className="h-9 w-14 text-right tabular-nums"
+                      />
+                      <span className="text-sm text-muted">kali</span>
+                    </span>
+                  ) : (
+                    <span className="text-sm tabular-nums">{count} malam</span>
+                  )}
+                  <MoneyCell
+                    label={`Harga ${addon.name}`}
+                    value={addon.unitPrice}
+                    disabled={addon.billed || !mayPrice}
+                    onChange={(unitPrice) => set({ unitPrice })}
+                  />
+                  <DiscountCell
+                    label={`Diskon ${addon.name}`}
+                    value={addon.discount}
+                    disabled={addon.billed || !mayPrice}
+                    onChange={(discount) => set({ discount })}
+                  />
+                  {addon.billed ? (
+                    <span />
+                  ) : (
+                    <button
+                      type="button"
+                      aria-label={`Hapus ${addon.name}`}
+                      className="flex size-9 items-center justify-center rounded-full text-muted transition hover:bg-tint-danger hover:text-danger focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none"
+                      onClick={() => change({ addons: draft.addons.filter((_, at) => at !== index) })}
+                    >
+                      <X className="size-4" />
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {offeredAddons.length > 0 ? (
+          <>
+            <div className="flex flex-wrap items-center gap-2">
+              <Select value={addonPick} onValueChange={setAddonPick}>
+                <SelectTrigger aria-label="Pilih add-on" className="h-11 min-w-72">
+                  <SelectValue placeholder="Pilih add-on" />
                 </SelectTrigger>
                 <SelectContent>
-                  {(addon.unit === "night" ? days.slice(0, -1) : days).map(
-                    (date) => (
-                      <SelectItem key={date} value={date}>
-                        {shortDate(date)}
-                      </SelectItem>
-                    ),
-                  )}
+                  {offeredAddons.map((addon) => (
+                    <SelectItem key={addon._id} value={addon._id}>
+                      {`${addon.name} · ${formatMoney(addon.price)}${addon.billingUnit === "per_night" ? " / malam" : ""}`}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
-            </label>
-            {(addon.unit === "time" || addon.commissionable) && (
-              <label className="flex flex-col gap-1 text-xs font-medium">
-                Jam
-                <Input
-                  type="time"
-                  aria-label={`Jam ${addon.name}`}
-                  value={addon.time}
-                  disabled={addon.billed}
-                  onChange={(event) =>
-                    change({
-                      addons: draft.addons.map((row, at) =>
-                        at === index
-                          ? { ...row, time: event.target.value }
-                          : row,
-                      ),
-                    })
-                  }
-                  className="h-9 w-28 tabular-nums"
-                />
-              </label>
-            )}
-            {addon.unit === "time" && (
-              <label className="flex flex-col gap-1 text-xs font-medium">
-                Jumlah
-                <Input
-                  inputMode="numeric"
-                  aria-label={`Jumlah ${addon.name}`}
-                  value={addon.qty}
-                  disabled={addon.billed}
-                  onChange={(event) =>
-                    change({
-                      addons: draft.addons.map((row, at) =>
-                        at === index
-                          ? { ...row, qty: digits(event.target.value) }
-                          : row,
-                      ),
-                    })
-                  }
-                  className="h-9 w-16 text-right tabular-nums"
-                />
-              </label>
-            )}
-            <label className="flex flex-col gap-1 text-xs font-medium">
-              Harga
-              <Input
-                inputMode="numeric"
-                aria-label={`Harga ${addon.name}`}
-                value={
-                  addon.unitPrice
-                    ? Number(addon.unitPrice).toLocaleString("id-ID")
-                    : ""
-                }
-                disabled={addon.billed || !mayPrice}
-                onChange={(event) =>
-                  change({
-                    addons: draft.addons.map((row, at) =>
-                      at === index
-                        ? { ...row, unitPrice: digits(event.target.value) }
-                        : row,
-                    ),
-                  })
-                }
-                className="h-9 w-28 text-right tabular-nums"
-              />
-            </label>
-            {!addon.billed && (
               <Button
                 type="button"
-                variant="ghost"
-                className="size-9 p-0 hover:bg-tint-danger hover:text-danger"
-                aria-label={`Hapus ${addon.name}`}
-                onClick={() =>
-                  change({
-                    addons: draft.addons.filter((_, at) => at !== index),
-                  })
-                }
+                variant="secondary"
+                disabled={!addonPick}
+                onClick={() => {
+                  const picked = offeredAddons.find((addon) => addon._id === addonPick);
+                  if (picked) change({ addons: [...draft.addons, addonFromService(picked, dates.checkInDate)] });
+                  setAddonPick("");
+                }}
               >
-                <X className="size-4" />
+                <Plus className="size-4" />
+                Tambah add-on
               </Button>
-            )}
-          </div>
-        ))}
-        {offeredAddons.length > 0 ? (
-          <div className="flex flex-wrap items-end gap-2">
-            <SelectField
-              label="Tambah add-on"
-              value={addonPick}
-              onChange={setAddonPick}
-              options={offeredAddons.map((addon) => ({
-                value: addon._id,
-                label: `${addon.name} · ${formatMoney(addon.price)} / ${addon.billingUnit === "per_night" ? "malam" : "kali"}`,
-              }))}
-              placeholder="Pilih add-on"
-              className="min-w-64"
-            />
-            <Button
-              type="button"
-              variant="secondary"
-              size="lg"
-              disabled={!addonPick}
-              onClick={() => {
-                const picked = offeredAddons.find(
-                  (addon) => addon._id === addonPick,
-                );
-                if (picked)
-                  change({
-                    addons: [
-                      ...draft.addons,
-                      addonFromService(picked, dates.checkInDate),
-                    ],
-                  });
-                setAddonPick("");
-              }}
-            >
-              <Plus className="size-4" />
-              Tambah
-            </Button>
-          </div>
+            </div>
+            <p className="text-xs text-muted">Add-on yang dikerjakan staf otomatis masuk checklist harian di tanggal dan jamnya.</p>
+          </>
         ) : (
-          service && (
-            <p className="text-xs text-muted">
-              Layanan ini belum punya add-on. Atur di Layanan &amp; Harga.
-            </p>
-          )
+          service && <p className="text-xs text-muted">Layanan ini belum punya add-on. Atur di Layanan &amp; Harga.</p>
         )}
+
+        <div className="ml-auto flex w-full max-w-md flex-col gap-3">
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span>Subtotal</span>
+            <span className="font-semibold tabular-nums">{formatMoney(subtotal)}</span>
+          </div>
+          <div className="flex items-center justify-between gap-3 text-sm">
+            <span>Diskon keseluruhan</span>
+            <DiscountCell
+              label="Diskon keseluruhan"
+              value={draft.bookingDiscount}
+              disabled={!mayPrice}
+              onChange={(bookingDiscount) => change({ bookingDiscount })}
+            />
+          </div>
+          <div className="flex items-baseline justify-between gap-3 border-t border-border pt-3">
+            <span className="text-base font-bold">Total</span>
+            <span className="text-2xl font-extrabold tabular-nums">{formatMoney(bill.total)}</span>
+          </div>
+        </div>
       </div>
 
       <button
@@ -622,6 +596,92 @@ export function StayPetFields({
           />
         </div>
       )}
+    </div>
+  );
+}
+
+const BILL_COLS = "grid grid-cols-[1.4fr_1.3fr_110px_150px_190px_36px] items-center gap-3";
+
+/** A rupiah box inside the bill table, thousands-grouped as it is typed. */
+function MoneyCell({
+  label,
+  value,
+  placeholder,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  disabled?: boolean;
+  onChange: (digits: string) => void;
+}) {
+  return (
+    <div className="relative">
+      <span className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-sm text-muted">Rp</span>
+      <Input
+        aria-label={label}
+        inputMode="numeric"
+        value={value ? Number(value).toLocaleString("id-ID") : ""}
+        placeholder={placeholder}
+        disabled={disabled}
+        onChange={(event) => onChange(digits(event.target.value))}
+        className="h-9 pl-9 text-right tabular-nums"
+      />
+    </div>
+  );
+}
+
+/** Rp / % and the amount, in one row — the bill table's discount cell. */
+function DiscountCell({
+  label,
+  value,
+  disabled,
+  onChange,
+}: {
+  label: string;
+  value: DiscountDraft;
+  disabled?: boolean;
+  onChange: (next: DiscountDraft) => void;
+}) {
+  return (
+    <div className="flex gap-1.5">
+      <div className="flex overflow-hidden rounded-md border border-border" role="group" aria-label={`${label}: satuan`}>
+        {(["amount", "percent"] as const).map((mode) => (
+          <button
+            key={mode}
+            type="button"
+            disabled={disabled}
+            aria-pressed={value.mode === mode}
+            onClick={() =>
+              onChange({ ...value, mode, value: mode === "percent" && Number(value.value) > 100 ? "100" : value.value })
+            }
+            className={cn(
+              "h-9 min-w-9 px-2 text-sm font-semibold focus-visible:ring-[3px] focus-visible:ring-ring/50 focus-visible:outline-none disabled:opacity-60",
+              value.mode === mode ? "bg-primary text-primary-foreground" : "bg-surface text-muted",
+            )}
+          >
+            {mode === "amount" ? "Rp" : "%"}
+          </button>
+        ))}
+      </div>
+      <Input
+        aria-label={label}
+        inputMode={value.mode === "percent" ? "decimal" : "numeric"}
+        value={value.mode === "amount" && value.value ? Number(digits(value.value)).toLocaleString("id-ID") : value.value}
+        placeholder="0"
+        disabled={disabled}
+        onChange={(event) =>
+          onChange({
+            ...value,
+            value:
+              value.mode === "amount"
+                ? digits(event.target.value)
+                : event.target.value.replace(/[^\d.,]/g, "").replace(",", "."),
+          })
+        }
+        className="h-9 w-24 text-right tabular-nums"
+      />
     </div>
   );
 }

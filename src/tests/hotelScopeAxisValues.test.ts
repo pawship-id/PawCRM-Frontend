@@ -22,6 +22,38 @@ describe("scopeHotelAxisValues", () => {
 
   it("narrows nothing while nothing is ticked", () => {
     const out = scopeHotelAxisValues(table, { petTypeIds: [], roomTypeIds: [], roomTypeAxis: "roomCard" });
-    expect(out).toEqual(table);
+    for (const [axis, values] of Object.entries(table)) {
+      expect(out[axis].map((e) => e.value)).toEqual(values.map((e) => e.value));
+    }
+  });
+});
+
+describe("Jenis hewan × Tipe kamar (24 November 2026)", () => {
+  it("pairs a room type only with the animals it takes", () => {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const { buildVariantCombos } = require("@/features/services/variantAxes");
+    const scoped = scopeHotelAxisValues(
+      {
+        petType: [v("cat", "Kucing"), v("dog", "Anjing")],
+        roomCard: [v("std", "Kandang Standar"), v("catroom", "Ruang Kucing"), v("dogzone", "Zona Bermain Anjing")],
+      },
+      {
+        petTypeIds: ["cat", "dog"],
+        roomTypeIds: [],
+        roomTypeAxis: "roomCard",
+        roomTypes: [
+          { _id: "std", petTypeIds: ["cat", "dog"] },
+          { _id: "catroom", petTypeIds: ["cat"] },
+          { _id: "dogzone", petTypeIds: ["dog"] },
+        ],
+      },
+    );
+    const labels = buildVariantCombos(["petType", "roomCard"], scoped).map((combo: { label: string }) => combo.label);
+    expect(labels).toEqual([
+      "Kucing · Kandang Standar",
+      "Kucing · Ruang Kucing",
+      "Anjing · Kandang Standar",
+      "Anjing · Zona Bermain Anjing",
+    ]);
   });
 });

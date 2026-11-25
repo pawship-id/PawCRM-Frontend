@@ -343,9 +343,9 @@ export function ServiceForm({ serviceId }: { serviceId?: string }) {
     const table = valuesFor(service?.variants);
     /* A hotel service offers rows only for its own animals and room types (24 November 2026). */
     return serviceType === "main" && serviceKind === "hotel"
-      ? scopeHotelAxisValues(table, { petTypeIds, roomTypeIds, roomTypeAxis })
+      ? scopeHotelAxisValues(table, { petTypeIds, roomTypeIds, roomTypeAxis, roomTypes: hotelRoomTypes.items })
       : table;
-  }, [valuesFor, service, serviceType, serviceKind, petTypeIds, roomTypeIds, roomTypeAxis]);
+  }, [valuesFor, service, serviceType, serviceKind, petTypeIds, roomTypeIds, roomTypeAxis, hotelRoomTypes.items]);
   const combos = useMemo(
     () => buildVariantCombos(variantAxes, axisValues),
     [variantAxes, axisValues],

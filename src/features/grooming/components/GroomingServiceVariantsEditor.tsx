@@ -25,6 +25,7 @@ import {
   useVariantAxisValues,
 } from "@/features/services";
 import { swalToast } from "@/lib/swal";
+import { useHotelRoomTypes } from "@/hooks/useHotelRoomTypes";
 import { cn } from "@/lib/utils";
 import { ApiError } from "@/services/api-error";
 import { serviceService } from "@/services/service.service";
@@ -127,6 +128,7 @@ export function GroomingServiceVariantsEditor({
     service.serviceKind ?? serviceKind,
     draft.axes,
   );
+  const hotelRoomTypes = useHotelRoomTypes();
   const roomTypeAxis = allAxisDefs.find((def) => def.systemKey === "roomType")?.key ?? null;
   const axisValues = useMemo(() => {
     const table = valuesFor(service.variants);
@@ -136,9 +138,10 @@ export function GroomingServiceVariantsEditor({
           petTypeIds: service.petTypeIds ?? [],
           roomTypeIds: service.roomTypeIds ?? [],
           roomTypeAxis,
+          roomTypes: hotelRoomTypes.items,
         })
       : table;
-  }, [valuesFor, service, serviceKind, roomTypeAxis]);
+  }, [valuesFor, service, serviceKind, roomTypeAxis, hotelRoomTypes.items]);
 
   /*
     NOT EDITABLE WITHOUT THE LIST. Which rows an axis makes is the tenant's
